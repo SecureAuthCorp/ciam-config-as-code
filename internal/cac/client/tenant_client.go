@@ -3,6 +3,8 @@ package client
 import (
 	"context"
 	"fmt"
+	"maps"
+	"slices"
 
 	acpclient "github.com/cloudentity/acp-client-go"
 	"github.com/cloudentity/acp-client-go/clients/hub/client/tenant_configuration"
@@ -77,6 +79,8 @@ func (t *TenantClient) Read(ctx context.Context, opts ...api.SourceOpt) (api.Pat
 func (t *TenantClient) Write(ctx context.Context, data api.Patch, opts ...api.SourceOpt) error {
 	var (
 		options = &api.Options{}
+		datF    func(ctx context.Context, mode string, data models.Rfc7396PatchOperation) error
+		secF    func(ctx context.Context, wid string, payload []*smodels.Secret) error
 		err     error
 	)
 
@@ -86,17 +90,29 @@ func (t *TenantClient) Write(ctx context.Context, data api.Patch, opts ...api.So
 
 	switch options.Method {
 	case "import":
-		if err = t.Import(ctx, options.Mode, data.GetData()); err != nil {
-			logErr(err)
-			return err
-		}
+		datF = t.Import
+		secF = t.sec.UpdateAll
 	case "patch":
-		if err = t.Patch(ctx, options.Mode, data.GetData()); err != nil {
-			logErr(err)
-			return err
-		}
+		datF = t.Patch
+		secF = t.sec.PatchAll
 	default:
 		return fmt.Errorf("unknown method: %v", options.Method)
+	}
+
+	if err = datF(ctx, options.Mode, data.GetData()); err != nil {
+		logErr(err)
+		return err
+	}
+
+	ext := data.GetExtensions().(*api.TenantExtensions)
+	for serverID, server := range ext.Servers {
+		slog.Info("pushing server secrets", "server", serverID)
+		secrets := slices.Collect(maps.Values(server.Secrets))
+		if err = secF(ctx, serverID, secrets); err != nil {
+			logErr(err)
+			return fmt.Errorf("failed to update secrets for server %s: %w", serverID, err)
+		}
+		slog.Info("pushed server secrets", "server", serverID)
 	}
 
 	return nil

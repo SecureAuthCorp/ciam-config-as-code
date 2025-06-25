@@ -4,7 +4,9 @@ import (
 	"context"
 	"crypto/tls"
 	"fmt"
+	"maps"
 	"net/http"
+	"slices"
 
 	acpclient "github.com/cloudentity/acp-client-go"
 	"github.com/cloudentity/acp-client-go/clients/hub/client/workspace_configuration"
@@ -109,6 +111,8 @@ func (c *Client) Read(ctx context.Context, opts ...api.SourceOpt) (api.Patch, er
 func (c *Client) Write(ctx context.Context, data api.Patch, opts ...api.SourceOpt) error {
 	var (
 		options   = &api.Options{}
+		datF      func(ctx context.Context, wid string, mode string, data api.Patch) error
+		secF 	  func(ctx context.Context, wid string, payload []*smodels.Secret) error
 		workspace string
 		err       error
 	)
@@ -123,17 +127,26 @@ func (c *Client) Write(ctx context.Context, data api.Patch, opts ...api.SourceOp
 
 	switch options.Method {
 	case "import":
-		if err = c.Import(ctx, workspace, options.Mode, data); err != nil {
-			logErr(err)
-			return err
-		}
+		datF = c.Import
+		secF = c.sec.UpdateAll
 	case "patch":
-		if err = c.Patch(ctx, workspace, options.Mode, data); err != nil {
-			logErr(err)
-			return err
-		}
+		datF = c.Patch
+		secF = c.sec.PatchAll
 	default:
 		return fmt.Errorf("unknown method: %v", options.Method)
+	}
+
+	if err = datF(ctx, workspace, options.Mode, data); err != nil {
+		logErr(err)
+		return err
+	}
+
+	ext := data.GetExtensions().(*api.ServerExtensions)
+	secrets := slices.Collect(maps.Values(ext.Secrets))
+
+	if err = secF(ctx, workspace, secrets); err != nil {
+		logErr(err)
+		return errors.Wrap(err, "failed to update secrets")
 	}
 
 	return nil

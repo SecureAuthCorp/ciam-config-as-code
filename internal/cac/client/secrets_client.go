@@ -76,13 +76,13 @@ func (s *SecretsClient) Update(ctx context.Context, wid string, payload models.S
 	return nil
 }
 
-func (s *SecretsClient) UpdateAll(ctx context.Context, wid string, payload []models.Secret) error {
+func (s *SecretsClient) UpdateAll(ctx context.Context, wid string, payload []*models.Secret) error {
 	return s.patchAll(ctx, wid, payload, func(dest *models.Secret, source models.Secret) error {
 		*dest = source 
 		return nil
 	})
 }
-func (s *SecretsClient) PatchAll(ctx context.Context, wid string, payload []models.Secret) error {
+func (s *SecretsClient) PatchAll(ctx context.Context, wid string, payload []*models.Secret) error {
 	return s.patchAll(ctx, wid, payload, func(dest *models.Secret, source models.Secret) error {
 		return mergo.Merge(dest, source, mergo.WithOverride); 
 	})
@@ -90,7 +90,7 @@ func (s *SecretsClient) PatchAll(ctx context.Context, wid string, payload []mode
 
 type PatchFunc func (dest *models.Secret, source models.Secret) error
 
-func (s *SecretsClient) patchAll(ctx context.Context, wid string, payload []models.Secret, patchF PatchFunc) error {
+func (s *SecretsClient) patchAll(ctx context.Context, wid string, payload []*models.Secret, patchF PatchFunc) error {
 
 	var (
 		existingSecrets []*models.Secret
@@ -108,7 +108,7 @@ func (s *SecretsClient) patchAll(ctx context.Context, wid string, payload []mode
 
 	for _, secret := range payload {
 		if existingSecret, exists := existingMap[secret.ID]; exists {
-			if err = patchF(existingSecret, secret); err != nil {
+			if err = patchF(existingSecret, *secret); err != nil {
 				return errors.Wrapf(err, "failed to merge secret %s", secret.ID)
 			}
 
@@ -117,7 +117,7 @@ func (s *SecretsClient) patchAll(ctx context.Context, wid string, payload []mode
 			}
 			delete(existingMap, existingSecret.ID) // Remove from map to avoid creating it later
 		} else {
-			if _, err = s.Create(ctx, wid, secret); err != nil {
+			if _, err = s.Create(ctx, wid, *secret); err != nil {
 				return errors.Wrapf(err, "failed to create secret %s", secret.ID)
 			}
 		}
