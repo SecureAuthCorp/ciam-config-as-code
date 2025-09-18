@@ -114,6 +114,7 @@ func InitConfig(path string) (_ *RootConfiguration, err error) {
 
 	for name, profile := range config.Profiles {
 		profile.SetImplicitValues(name, config.Default)
+		config.Profiles[name] = profile
 	}
 
 	return config, nil
