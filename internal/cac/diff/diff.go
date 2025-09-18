@@ -89,7 +89,7 @@ var fieldsFilter = func(fields []string) cmp.Option {
 var filerVolatileFields = fieldsFilter(volatileFields)
 var filterSecretFields = fieldsFilter(secretFields)
 
-func Diff(ctx context.Context, left api.Source, right api.Source, workspace string, opts ...Option) (string, error) {
+func Diff(ctx context.Context, source api.Source, target api.Source, workspace string, opts ...Option) (string, error) {
 	var (
 		server1  models.Rfc7396PatchOperation
 		server2  models.Rfc7396PatchOperation
@@ -114,18 +114,18 @@ func Diff(ctx context.Context, left api.Source, right api.Source, workspace stri
 		readOpts = append(readOpts, api.WithSecrets(true))
 	}
 
-	if server1, err = left.Read(ctx, readOpts...); err != nil {
+	if server1, err = source.Read(ctx, readOpts...); err != nil {
 		return "", err
 	}
 
-	if server2, err = right.Read(ctx, readOpts...); err != nil {
+	if server2, err = target.Read(ctx, readOpts...); err != nil {
 		return "", err
 	}
 
 	return Tree(server1, server2, opts...)
 }
 
-func Tree(left models.Rfc7396PatchOperation, right models.Rfc7396PatchOperation, opts ...Option) (string, error) {
+func Tree(source models.Rfc7396PatchOperation, target models.Rfc7396PatchOperation, opts ...Option) (string, error) {
 	var (
 		options  = &Options{}
 		diffOpts = cmp.Options{}
@@ -136,22 +136,22 @@ func Tree(left models.Rfc7396PatchOperation, right models.Rfc7396PatchOperation,
 		opt(options)
 	}
 
-	utils.CleanPatch(left)
-	utils.CleanPatch(right)
+	utils.CleanPatch(source)
+	utils.CleanPatch(target)
 
 	// marshaling structs to json and back to get proper field names in the comparison
-	if left, err = utils.NormalizePatch(left); err != nil {
+	if source, err = utils.NormalizePatch(source); err != nil {
 		return "", err
 	}
 
-	if right, err = utils.NormalizePatch(right); err != nil {
+	if target, err = utils.NormalizePatch(target); err != nil {
 		return "", err
 	}
 
 	if options.PresentAtSource {
-		for k := range right {
-			if tm, ok := right[k].(map[string]any); ok {
-				OnlyPresentKeys(left[k], tm)
+		for k := range target {
+			if tm, ok := target[k].(map[string]any); ok {
+				OnlyPresentKeys(source[k], tm)
 			}
 		}
 	}
@@ -168,7 +168,7 @@ func Tree(left models.Rfc7396PatchOperation, right models.Rfc7396PatchOperation,
 		return a < b
 	}))
 	
-	out := cmp.Diff(right, left, diffOpts)
+	out := cmp.Diff(target, source, diffOpts)
 
 	if options.Color {
 		out = colorize(out)
