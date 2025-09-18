@@ -164,6 +164,7 @@ func Tree(source models.Rfc7396PatchOperation, target models.Rfc7396PatchOperati
 		diffOpts = append(diffOpts, filterSecretFields)
 	}
 
+	// sorting slices to avoid diffs due to different order
 	diffOpts = append(diffOpts, cmpopts.SortSlices(func(a, b string) bool {
 		return a < b
 	}))
