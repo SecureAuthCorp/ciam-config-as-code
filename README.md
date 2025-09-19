@@ -221,6 +221,8 @@ Global Flags:
       --profile string   Configuration profile
 ```
 
+> **Note:** Use `--source merged` flag to show only the changes that will be applied to the remote branch, instead of displaying the complete configuration difference. It ignores all skipped entities and fields.
+
 Sample execution
 
 ```

@@ -2,12 +2,14 @@ package diff
 
 import (
 	"context"
+	"regexp"
+
 	"github.com/cloudentity/acp-client-go/clients/hub/models"
 	"github.com/cloudentity/cac/internal/cac/api"
 	"github.com/cloudentity/cac/internal/cac/utils"
 	"github.com/google/go-cmp/cmp"
+	"github.com/google/go-cmp/cmp/cmpopts"
 	"golang.org/x/exp/slog"
-	"regexp"
 )
 
 type Options struct {
@@ -162,10 +164,15 @@ func Tree(source models.Rfc7396PatchOperation, target models.Rfc7396PatchOperati
 		diffOpts = append(diffOpts, filterSecretFields)
 	}
 
-	var out = cmp.Diff(target, source, diffOpts)
+	// sorting slices to avoid diffs due to different order
+	diffOpts = append(diffOpts, cmpopts.SortSlices(func(a, b string) bool {
+		return a < b
+	}))
+	
+	out := cmp.Diff(target, source, diffOpts)
 
 	if options.Color {
-		return colorize(out), nil
+		out = colorize(out)
 	}
 
 	return out, nil

@@ -117,6 +117,34 @@ func (a *Application) PickSource(source string, tenant bool) (api.Source, error)
 		}
 
 		return c, nil
+	case api.SourceMerged:
+		var (
+			c   *client.Client
+			err error
+		)
+		
+		ms, err := storage.InitMultiStorage(conf.Storage, constructor)
+
+		if err != nil {
+			return nil, err
+		}
+
+		storages := ms.Storages
+
+		if c, err = client.InitClient(conf.Client); err != nil {
+			return nil, err
+		}
+
+		if !tenant {
+			storages = append(storages, c)
+		} else {
+			storages = append(storages, c.Tenant())
+		}
+
+		return &storage.MultiStorage{
+			Storages: storages,
+			Config:   ms.Config,
+		}, nil
 	}
 
 	return nil, api.ErrUnknownSource

@@ -13,6 +13,7 @@ var ErrUnknownSource = errors.New("unknown source")
 const (
 	SourceLocal  SourceType = "local"
 	SourceRemote SourceType = "remote"
+	SourceMerged SourceType = "merged"
 )
 
 func SourceFromString(s string) (SourceType, error) {
@@ -21,6 +22,8 @@ func SourceFromString(s string) (SourceType, error) {
 		return SourceLocal, nil
 	case "remote":
 		return SourceRemote, nil
+	case "merged":
+		return SourceMerged, nil
 	}
 
 	return "", ErrUnknownSource
