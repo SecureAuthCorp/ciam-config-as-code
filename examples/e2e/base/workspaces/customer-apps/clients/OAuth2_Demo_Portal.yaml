@@ -1,0 +1,86 @@
+id: customer-apps-demo
+application_type: web
+application_types:
+- server_web
+audience:
+- customer-apps-demo
+authorization_details_types: []
+authorization_signed_response_alg: RS256
+backchannel_logout_session_required: false
+backchannel_user_code_parameter: false
+client_id_issued_at: 1758231235
+client_name: OAuth2 Demo Portal
+client_secret_expires_at: 0
+client_status: active
+client_type: oauth2
+default_acr_values: []
+dpop_bound_access_tokens: false
+dynamically_registered: false
+fdx:
+  contacts: []
+  duration_period: 0
+  duration_type: []
+  intermediaries: []
+  lookback_period: 0
+  registry_references: []
+grant_types:
+- authorization_code
+hashed_rotated_secrets: []
+id_token_signed_response_alg: RS256
+introspection_endpoint_auth_method: client_secret_basic
+jwks:
+  keys: []
+obbr:
+  webhook_uris: []
+post_logout_redirect_uris: []
+redirect_uris:
+- https://{{ env "TENANT_ID" }}.eu.authz.cloudentity.io/{{ env "TENANT_ID" }}/customer-apps/demo
+registration_token:
+  expires_in: 0
+request_object_signing_alg: any
+request_uris: []
+require_pushed_authorization_requests: false
+response_types:
+- id_token
+- code
+- token
+revocation_endpoint_auth_method: client_secret_basic
+rotated_secrets: []
+saml_allowed_attributes: []
+saml_metadata:
+  AdditionalMetadataLocations: []
+  AttributeAuthorityDescriptors: []
+  AuthnAuthorityDescriptors: []
+  CacheDuration: 0
+  IDPSSODescriptors: []
+  PDPDescriptors: []
+  RoleDescriptors: []
+  SPSSODescriptors: []
+  ValidUntil: 0001-01-01T00:00:00.000Z
+saml_override_attributes: false
+saml_signing_hash: sha-256
+scopes:
+- email
+- introspect_tokens
+- list_clients_with_access
+- manage_consents
+- offline_access
+- openid
+- profile
+- revoke_client_access
+- revoke_tokens
+- view_consents
+subject_type: public
+system: false
+tls_client_certificate_bound_access_tokens: false
+token_endpoint_auth_method: client_secret_basic
+token_exchange:
+  actor_claims: []
+token_ttls:
+  access_token_ttl: 1h0m0s
+  authorization_code_ttl: 10m0s
+  id_token_ttl: 1h0m0s
+  refresh_token_ttl: 168h0m0s
+trusted: false
+use_custom_token_ttls: false
+userinfo_signed_response_alg: none

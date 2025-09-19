@@ -5,14 +5,19 @@ client:
   issuer_url: https://postmance.eu.authz.cloudentity.io/postmance/system
   client_id: fb346c287c4d4e378cbae39aa0c3fe52
   client_secret: invalid_secret
+  tenant_id: postmance
 storage:
-  dir_path: "/tmp/e2e-data"
+  dir_path: ./prod/,./base/
 
 profiles:
-  stage:
+  dev:
+    logging:
+      level: info
+      format: text
     client:
-      issuer_url: https://janus.eu.authz.cloudentity.io/janus/system
-      client_id: fb346c287c4d4e378cbae39aa0cxxxxx
+      issuer_url: https://postmance-dev.eu.authz.cloudentity.io/postmance-dev/system
+      client_id: 21ac20db6d0c4b8e8772f82af0a741c2
       client_secret: invalid_secret
+      tenant_id: postmance-dev
     storage:
-      dir_path: "/tmp/other"
+      dir_path: ./dev/,./base/

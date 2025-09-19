@@ -1,0 +1,310 @@
+access_token_strategy: jwt
+access_token_ttl: 1h0m0s
+advanced:
+  acr_values: []
+  advertise_only_mtls_aliases_in_well_known: false
+  block_response_modes: false
+  cookies_configuration:
+    same_site: lax
+  disable_dcr_client_certificate_bound_access_tokens: false
+  disable_par: false
+  disable_rar: false
+  disable_refresh_token_cycling: false
+  disallow_access_token_in_query_for_protected_resources: false
+  disallow_code_response_type_without_jarm: false
+  do_not_issue_acr_claim_in_id_token: false
+  enforce_acr_values: false
+  ignore_unknown_scopes_for_dcr: false
+  require_request_or_request_uri_parameter: false
+  return_iss_parameter_in_authorization_response: false
+  single_audience_equals_issuer_in_authentication_jwts: true
+  strict_post_logout_redirect_enforcement: false
+authentication_context_settings:
+  attributes:
+  - description: Subject
+    labels:
+    - advanced
+    name: sub
+    type: string
+  - description: List of scopes
+    labels:
+    - advanced
+    name: scp
+    type: string_array
+  - description: List of groups that user belongs to
+    labels: []
+    name: groups
+    type: string_array
+  - description: Email
+    labels:
+    - simple
+    name: email
+    type: string
+  - description: Email verified
+    labels:
+    - advanced
+    name: email_verified
+    type: bool
+  - description: Phone
+    labels:
+    - simple
+    name: phone_number
+    type: string
+  - description: Phone verified
+    labels:
+    - advanced
+    name: phone_number_verified
+    type: bool
+  - description: Full mailing address
+    labels: []
+    name: address.formatted
+    type: string
+  - description: Full street address
+    labels: []
+    name: address.street_address
+    type: string
+  - description: City or locality
+    labels: []
+    name: address.locality
+    type: string
+  - description: State, province, prefecture or region
+    labels: []
+    name: address.region
+    type: string
+  - description: Country
+    labels: []
+    name: address.country
+    type: string
+  - description: Postal code
+    labels: []
+    name: address.postal_code
+    type: string
+  - description: Name
+    labels: []
+    name: name
+    type: string
+  - description: Given name
+    labels:
+    - simple
+    name: given_name
+    type: string
+  - description: Middle name
+    labels: []
+    name: middle_name
+    type: string
+  - description: Family name
+    labels:
+    - simple
+    name: family_name
+    type: string
+  - description: Nickname
+    labels: []
+    name: nickname
+    type: string
+  - description: The primary username that represents the user
+    labels:
+    - simple
+    name: preferred_username
+    type: string
+  - description: URL of the profile page
+    labels: []
+    name: profile
+    type: string
+  - description: URL of the profile picture
+    labels: []
+    name: picture
+    type: string
+  - description: URL of the web page
+    labels: []
+    name: website
+    type: string
+  - description: Gender
+    labels: []
+    name: gender
+    type: string
+  - description: Birthdate
+    labels: []
+    name: birthdate
+    type: string
+  - description: Zoneinfo
+    labels: []
+    name: zoneinfo
+    type: string
+  - description: Locale
+    labels: []
+    name: locale
+    type: string
+  - description: Last update
+    labels: []
+    name: updated_at
+    type: number
+  - description: IDP Subject
+    labels: []
+    name: idp_sub
+    type: string
+  - description: Authentication Time
+    labels: []
+    name: auth_time
+    type: number
+authentication_mechanisms:
+- totp
+- password
+- email_otp
+- webauthn
+authorization_code_ttl: 10m0s
+backchannel_token_delivery_modes_supported:
+- poll
+- ping
+backchannel_user_code_parameter_supported: false
+cdr:
+  adr_validation_enabled: true
+  arrangements_auto_removal:
+    enabled: false
+    remove_after_days: 0
+  dont_cache_trust_anchor_data: false
+  industry: banking
+  skip_register_url_validation: false
+color: "#EAB344"
+cookie_max_age: 1h0m0s
+device_authorization:
+  request_ttl: 30m0s
+  user_code_character_set: base20
+  user_code_length: 8
+do_not_create_default_claims: false
+dynamic_client_registration:
+  cert_bound_registration_token: false
+  default_scopes: []
+  disable_registration_access_token_expiry: false
+  disable_registration_token_management: false
+  disable_registration_token_rotation: false
+  enabled: false
+  initial_access_token:
+    required: false
+  payload:
+    format: json
+    jws_payload:
+      jwks:
+        keys: []
+      source: server_configuration
+  registration_access_token_ttl: 720h0m0s
+dynamic_scope_separator: .
+enable_idp_discovery: true
+enable_legacy_clients_with_no_software_statement: false
+enable_quick_access: false
+enable_trust_anchor: false
+enforce_id_token_encryption: false
+enforce_pkce: true
+enforce_pkce_for_public_clients: true
+grant_types:
+- authorization_code
+- implicit
+- client_credentials
+- refresh_token
+id: customer-apps
+id_token_ttl: 1h0m0s
+identity_assurance:
+  attachments: []
+  block_verified_claims_via_userinfo: false
+  digest_algorithms: []
+  documents: []
+  documents_check_methods: []
+  documents_methods: []
+  electronic_records: []
+  enable_verified_claims: false
+  evidence: []
+  trust_frameworks: []
+idp_discovery:
+  discovery_mode: domain_matching
+  enabled: true
+initialize: false
+jwks:
+  keys: []
+  revoked_encryption_keys: []
+  revoked_keys_limit: 0
+  revoked_signing_keys: []
+  rotated_keys_limit: 0
+key_type: rsa
+metadata:
+  schema:
+    additionalProperties: false
+    allOf: []
+    anyOf: []
+    enum: []
+    exclusiveMaximum: 0
+    exclusiveMinimum: 0
+    hidden: false
+    maxContains: 0
+    maxItems: 0
+    maxLength: 0
+    maxProperties: 0
+    maximum: 0
+    minContains: 0
+    minItems: 0
+    minLength: 0
+    minProperties: 0
+    minimum: 0
+    multipleOf: 0
+    oneOf: []
+    required: []
+    uniqueItems: false
+name: customer-apps
+obbr:
+  industry: banking
+organization:
+  domains: []
+profile: consumer
+pushed_authorization_request_ttl: 1m0s
+refresh_token_ttl: 24h0m0s
+require_pushed_authorization_requests: false
+response_types:
+- token
+- id_token
+- code
+- code id_token
+- token id_token
+- token code
+- token id_token code
+rotated_secrets: []
+saml:
+  signing_hash_algorithms:
+  - sha-256
+  - sha-512
+  subject_name_id: mail
+  subject_name_id_format: urn:oasis:names:tc:SAML:1.1:nameid-format:emailAddress
+scope_claim_formats:
+- scp_array
+settings:
+  default_client_id: customer-apps
+sso:
+  enabled: false
+  loa_threshold: 0
+  logout_redirect_domains: []
+  max_age: 0s
+  max_idle: 0s
+subject_format: hash
+subject_identifier_types:
+- public
+- pairwise
+template: false
+tenant_id: ""
+token_endpoint_auth_methods:
+- client_secret_basic
+- client_secret_post
+- tls_client_auth
+- none
+token_endpoint_auth_signing_alg_values:
+- RS256
+- PS256
+- ES256
+token_endpoint_authn_methods:
+- client_secret_basic
+- client_secret_post
+- tls_client_auth
+- none
+trust_anchor_configuration:
+  jwks:
+    keys: []
+type: regular
+version: 3
+workforce:
+  status: pending
