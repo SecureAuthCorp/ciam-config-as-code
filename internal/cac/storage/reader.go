@@ -5,6 +5,7 @@ import (
 	"path/filepath"
 
 	"github.com/cloudentity/cac/internal/cac/templates"
+	"github.com/cloudentity/cac/internal/cac/utils"
 	ccyaml "github.com/goccy/go-yaml"
 	"github.com/pkg/errors"
 	"golang.org/x/exp/slog"
@@ -44,7 +45,7 @@ func readFile(path string, opts ...ReadFileOpt) (map[string]any, error) {
 	slog.Debug("read template", "path", path, "data", bts)
 
 	
-	if err = ccyaml.Unmarshal(bts, &out); err != nil {
+	if out, err = utils.FromYaml(bts); err != nil {
 		return out, errors.Wrapf(err, "failed to unmarshal template %s", path)
 	}
 

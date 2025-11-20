@@ -170,7 +170,7 @@ func createMultilineIncludeTemplate(str string, indent int) string {
 
 var multilineTemplateRegexp = regexp.MustCompile(`⌘⌘(\d+) ([^⌘]+)⌘⌘`)
 
-func postProcessMultilineTemplates(bts []byte) []byte {
+func 	postProcessMultilineTemplates(bts []byte) []byte {
 	bts = multilineTemplateRegexp.ReplaceAll(bts, []byte("{{ $2 | nindent $1 }}"))
 
 	return bts

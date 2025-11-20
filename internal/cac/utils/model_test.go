@@ -81,3 +81,44 @@ func TestFilterPatch(t *testing.T) {
 		})
 	}
 }
+
+func TestMappingNumbersToModel(t *testing.T) {
+	patch := models.Rfc7396PatchOperation{
+		"policies": map[string]any{
+			"p1": map[string]any{
+				"validators": []any{
+					map[string]any{
+						"conf": map[string]any{
+							"max_x": 3,
+						},
+					},
+				},
+			},
+		},
+	}
+
+	result, err := utils.FromPatchToModel[models.TreeServer](patch)
+
+	require.NoError(t, err)
+	require.Equal(t, float64(3), result.Policies["p1"].Validators[0].Conf["max_x"])
+}
+
+func TestMappingNumbersToYaml(t *testing.T) {
+	model := models.TreeServer{
+		Policies: models.TreePolicies{
+			"p1": models.TreePolicy{
+				Validators: []*models.ValidatorConfig{
+					{
+						Conf: map[string]any{
+							"max_x": 3,
+						},
+					},
+				},
+			},
+		},
+	}
+	patch, err := utils.FromModelToPatch(&model)
+
+	require.NoError(t, err)
+	require.Equal(t, float64(3), patch["policies"].(map[string]any)["p1"].(map[string]any)["validators"].([]any)[0].(map[string]any)["conf"].(map[string]any)["max_x"])
+}

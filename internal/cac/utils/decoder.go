@@ -21,7 +21,7 @@ func Decoder(result any) (*mapstructure.Decoder, error) {
 
 func ConfigureDecoder(config *mapstructure.DecoderConfig) {
 	config.TagName = "json"
-	config.WeaklyTypedInput = true
+	config.WeaklyTypedInput = false
 	config.DecodeHook = mapstructure.ComposeDecodeHookFunc(urlDecoder(), timeDecoder(), stringToSlice())
 }
 
