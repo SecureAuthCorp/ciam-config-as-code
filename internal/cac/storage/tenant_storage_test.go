@@ -151,8 +151,8 @@ mechanism: sms`, string(bts))
                             },
                         },
                         WebauthnSettings: &models.WebAuthnSettings{
-                            RpID:      "marksandspencer.com",
-                            RpOrigins: []string{"https://www.sit2.marksandspencer.com"},
+                            RpID:      "example.com",
+                            RpOrigins: []string{"https://www.sit2.example.com"},
                         },
                     },
                 },
@@ -175,9 +175,9 @@ public_registration_allowed: false
 second_factor_threshold: 0
 system: false
 webauthn_settings:
-  rp_id: marksandspencer.com
+  rp_id: example.com
   rp_origins:
-    - https://www.sit2.marksandspencer.com`, string(bts))
+    - https://www.sit2.example.com`, string(bts))
             },
         },
         {
