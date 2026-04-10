@@ -62,24 +62,6 @@ var (
 				return nil
 			}
 
-			// Debug: log policy_execution_points before sending
-			if pep, ok := data["policy_execution_points"]; ok {
-				slog.Info("policy_execution_points in patch", "value", pep)
-			} else {
-				slog.Info("policy_execution_points NOT in patch")
-			}
-			if policies, ok := data["policies"]; ok {
-				if pm, ok := policies.(map[string]any); ok {
-					keys := make([]string, 0, len(pm))
-					for k := range pm {
-						keys = append(keys, k)
-					}
-					slog.Info("policies in patch", "count", len(pm), "ids", keys)
-				}
-			} else {
-				slog.Info("policies NOT in patch")
-			}
-
 			if err = app.Client.Write(
 				cmd.Context(),
 				data,
