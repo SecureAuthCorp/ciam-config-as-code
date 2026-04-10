@@ -3,7 +3,9 @@ package client
 import (
 	"context"
 	"crypto/tls"
+	"encoding/json"
 	"fmt"
+	"os"
 	"github.com/cloudentity/acp-client-go"
 	"github.com/cloudentity/acp-client-go/clients/hub/client/workspace_configuration"
 	"github.com/cloudentity/acp-client-go/clients/hub/models"
@@ -121,6 +123,29 @@ func (c *Client) Patch(ctx context.Context, workspace string, mode string, data 
 	var (
 		err error
 	)
+
+	// Debug: dump what standard json.Marshal produces
+	if bts, jerr := json.Marshal(data); jerr == nil {
+		// Extract just the policy_execution_points field
+		var parsed map[string]json.RawMessage
+		if json.Unmarshal(bts, &parsed) == nil {
+			if pepJSON, ok := parsed["policy_execution_points"]; ok {
+				slog.Info("CAC json.Marshal PEP", "pep", string(pepJSON))
+			}
+		}
+		slog.Info("CAC json.Marshal", "size", len(bts), "keys_count", len(parsed))
+
+		// Also dump the raw data map to check for unexpected types
+		if pepRaw, ok := data["policy_execution_points"]; ok {
+			slog.Info("CAC data map PEP", "type", fmt.Sprintf("%T", pepRaw), "value", fmt.Sprintf("%v", pepRaw))
+		}
+	}
+
+	// Debug: dump the data to /tmp so we can compare with direct HTTP
+	if bts, jerr := json.Marshal(data); jerr == nil {
+		os.WriteFile("/tmp/cac-patch-body.json", bts, 0o644)
+		slog.Warn("CAC patch body written to /tmp/cac-patch-body.json", "size", len(bts))
+	}
 
 	if _, err = c.acp.Hub.WorkspaceConfiguration.
 		PatchWorkspaceConfigRfc7396(workspace_configuration.

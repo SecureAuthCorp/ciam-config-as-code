@@ -139,6 +139,48 @@ mechanism: sms`, string(bts))
             },
         },
         {
+            desc: "pool with otp and webauthn settings",
+            data: &models.TreeTenant{
+                Pools: models.TreePools{
+                    "idp-datamigration-pool": models.TreePool{
+                        Name: "Idp-datamigration-pool",
+                        OtpSettings: &models.OtpSettings{
+                            VerifyAddress: &models.OtpConfig{
+                                Length: 6,
+                                TTL:    strfmt.Duration(5 * time.Minute),
+                            },
+                        },
+                        WebauthnSettings: &models.WebAuthnSettings{
+                            RpID:      "marksandspencer.com",
+                            RpOrigins: []string{"https://www.sit2.marksandspencer.com"},
+                        },
+                    },
+                },
+            },
+            files: []string{
+                "pools/Idp-datamigration-pool.yaml",
+            },
+            assert: func(t *testing.T, path string, bts []byte) {
+                require.YAMLEq(t, `allow_skip_2fa: false
+deleted: false
+id: idp-datamigration-pool
+identifier_case_insensitive: false
+mfa_session_ttl: 0s
+name: Idp-datamigration-pool
+otp_settings:
+  verify_address:
+    length: 6
+    ttl: 5m0s
+public_registration_allowed: false
+second_factor_threshold: 0
+system: false
+webauthn_settings:
+  rp_id: marksandspencer.com
+  rp_origins:
+    - https://www.sit2.marksandspencer.com`, string(bts))
+            },
+        },
+        {
             desc: "themes and templates",
             data: &models.TreeTenant{
                 Themes: models.TreeThemes{
