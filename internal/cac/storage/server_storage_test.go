@@ -106,6 +106,8 @@ request_uris: []
 require_pushed_authorization_requests: false
 rotated_secrets: []
 saml_allowed_attributes: []
+saml_idp_accept_acs_from_request: false
+saml_idp_override_enabled: false
 saml_metadata_updated_at: 0001-01-01T00:00:00.000Z
 saml_override_attributes: false
 scopes: []
@@ -347,6 +349,7 @@ type: custom`, string(bts))
             },
             assert: func(t *testing.T, path string, bts []byte) {
                 require.YAMLEq(t, `id: some_service
+capabilities: []
 name: Some Service
 scopes:
   some_scope:
@@ -392,6 +395,7 @@ with_specification: false`, string(bts))
             assert: func(t *testing.T, path string, bts []byte) {
                 require.YAMLEq(t, `active: true
 id: hook_id
+include_child_events: false
 insecure: false
 url: https://example.com`, string(bts))
             },
