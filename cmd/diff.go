@@ -13,7 +13,31 @@ import (
 var (
 	diffCmd = &cobra.Command{
 		Use:   "diff",
-		Short: "Compare configuration",
+		Short: "Compare configuration between two sources",
+		Long: `Compare configuration between two sources for a workspace or tenant.
+
+--source and --target accept a source type, optionally prefixed with a profile
+from --config using the form "[profile@]source-type".
+
+Source types:
+  local  - configuration read from local files
+  remote - configuration fetched from the SecureAuth server
+  merged - local files merged on top of remote configuration
+
+Examples:
+  # Compare local files against the remote server
+  cac --config ./cac.yaml --profile dev --workspace demo diff --source local --target remote
+
+  # Compare two profiles' remote configurations
+  cac --config ./cac.yaml --workspace demo diff --source dev@remote --target prod@remote
+
+  # Compare merged view against the remote server, only for clients and policies
+  cac --config ./cac.yaml --profile dev --workspace demo diff \
+      --source merged --target remote --filter clients,policies
+
+  # Write the diff to a file
+  cac --config ./cac.yaml --profile dev --workspace demo diff \
+      --source local --target remote --out diff.txt`,
 		RunE: func(cmd *cobra.Command, args []string) error {
 			var (
 				app    *cac.Application
@@ -87,14 +111,40 @@ var (
 )
 
 func init() {
-	diffCmd.PersistentFlags().StringVar(&diffConfig.Source, "source", "", "Source profile name")
-	diffCmd.PersistentFlags().StringVar(&diffConfig.Target, "target", "", "Target profile name")
-	diffCmd.PersistentFlags().BoolVar(&diffConfig.Colors, "colors", true, "Colorize output")
-	diffCmd.PersistentFlags().BoolVar(&diffConfig.OnlyPresent, "only-present", false, "Compare only resources present at source")
-	diffCmd.PersistentFlags().StringSliceVar(&diffConfig.Filters, "filter", []string{}, "Compare only selected resources")
-	diffCmd.PersistentFlags().StringVar(&diffConfig.Out, "out", "-", "Diff output. It can be a file or '-' for stdout")
-	diffCmd.PersistentFlags().BoolVar(&diffConfig.WithSecrets, "with-secrets", false, "Compare secrets")
-	diffCmd.PersistentFlags().BoolVar(&diffConfig.FilterVolatile, "no-volatile", false, "Ignore volatile fields")
+	diffCmd.PersistentFlags().StringVar(&diffConfig.Source, "source", "", `Source of the comparison (required). Format: [profile@]source-type
+Source types: local, remote, merged
+Examples:
+  --source local
+  --source remote
+  --source merged
+  --source dev@remote`)
+	diffCmd.PersistentFlags().StringVar(&diffConfig.Target, "target", "", `Target of the comparison (required). Format: [profile@]source-type
+Source types: local, remote, merged
+Examples:
+  --target remote
+  --target prod@remote
+  --target merged`)
+	diffCmd.PersistentFlags().BoolVar(&diffConfig.Colors, "colors", true, `Colorize the diff output (default true).
+Example: --colors=false`)
+	diffCmd.PersistentFlags().BoolVar(&diffConfig.OnlyPresent, "only-present", false, `Only diff resources that are present in the source; ignore resources that only exist in the target.
+Example: --only-present`)
+	diffCmd.PersistentFlags().StringSliceVar(&diffConfig.Filters, "filter", []string{}, `Restrict the comparison to selected top-level resources (comma-separated or repeated).
+Workspace resources: clients, idps, claims, custom_apps, gateways, policies, policy_execution_points,
+                     pools, scopes (alias of scopes_without_service), scripts, script_execution_points,
+                     server_consent, servers_bindings, services, theme_binding, webhooks,
+                     ciba (alias of ciba_authentication_service)
+Tenant resources:    pools, schemas, mfa_methods, themes, servers
+Examples:
+  --filter clients
+  --filter clients,idps,policies`)
+	diffCmd.PersistentFlags().StringVar(&diffConfig.Out, "out", "-", `Diff output destination: a file path or '-' for stdout.
+Examples:
+  --out -            (stdout)
+  --out ./diff.txt   (file)`)
+	diffCmd.PersistentFlags().BoolVar(&diffConfig.WithSecrets, "with-secrets", false, `Include secret fields in the comparison.
+Example: --with-secrets`)
+	diffCmd.PersistentFlags().BoolVar(&diffConfig.FilterVolatile, "no-volatile", false, `Ignore volatile fields (e.g. timestamps, generated IDs) when comparing.
+Example: --no-volatile`)
 
 	mustMarkRequired(diffCmd, "source", "target")
 }

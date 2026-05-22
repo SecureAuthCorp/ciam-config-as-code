@@ -1,6 +1,6 @@
-# Cloudentity Configuration As Code (Early Access)
+# SecureAuth Configuration As Code (Early Access)
 
-This repository contains a CLI tool for managing Cloudentity configuration.
+This repository contains a CLI tool for managing SecureAuth configuration.
 
 ## Installation
 
@@ -57,7 +57,7 @@ Prints help message with available commands and their parameters.
 ```bash
 cac --help 
 
-Cloudentity configuration manager
+SecureAuth configuration manager
 
 Usage:
   cac [command]
@@ -79,7 +79,7 @@ Use "cac [command] --help" for more information about a command.
 
 ### Pull
 
-Pull configuration from Cloudentity and save it to a directory configured by `storage.dir_path`.
+Pull configuration from SecureAuth and save it to a directory configured by `storage.dir_path`.
 
 ```bash
 cac pull --help
@@ -159,7 +159,7 @@ The sample output in the `storage.dir_path` should look like:
 
 ### Push
 
-Merge configuration from a directory structure and push it into Cloudentity.
+Merge configuration from a directory structure and push it into SecureAuth.
 
 ```bash
 cac push --help
