@@ -19,7 +19,12 @@ jobs:
             env:
               GH_TOKEN: ${{ github.token }}
             run: |
-              tag=$(gh release view --repo ${{ github.repository }} --json tagName -q .tagName)
+              tag=$(gh release view --repo ${{ github.repository }} --json tagName -q .tagName 2>/dev/null || true)
+              if [ -z "$tag" ]; then
+                echo "no release found, will use default checkout ref"
+              else
+                echo "resolved release tag: $tag"
+              fi
               echo "tag=$tag" >> "$GITHUB_OUTPUT"
 
     test:
