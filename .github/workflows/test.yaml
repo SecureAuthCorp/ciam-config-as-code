@@ -10,20 +10,44 @@ permissions:
   contents: read
 
 jobs:
+    resolve-tag:
+        runs-on: ubuntu-latest
+        outputs:
+          tag: ${{ steps.tag.outputs.tag }}
+        steps:
+          - id: tag
+            env:
+              GH_TOKEN: ${{ github.token }}
+            run: |
+              tag=$(gh release view --repo ${{ github.repository }} --json tagName -q .tagName 2>/dev/null || true)
+              if [ -z "$tag" ]; then
+                echo "no release found, will use default checkout ref"
+              else
+                echo "resolved release tag: $tag"
+              fi
+              echo "tag=$tag" >> "$GITHUB_OUTPUT"
+
     test:
+        needs: resolve-tag
         runs-on: ubuntu-latest
         steps:
-        - uses: actions/checkout@v3
-        - uses: ./
-          id: cac
-          with:
-            args: --help
-        - run: echo -e "${{ steps.cac.outputs.result }}"
-          name: print action output
+          - uses: actions/checkout@v4
+            with:
+              ref: ${{ needs.resolve-tag.outputs.tag }}
+          - uses: ./
+            id: cac
+            with:
+              args: --help
+          - run: echo -e "${{ steps.cac.outputs.result }}"
+            name: print action output
+
     negative-test:
+        needs: resolve-tag
         runs-on: ubuntu-latest
         steps:
-          - uses: actions/checkout@v3
+          - uses: actions/checkout@v4
+            with:
+              ref: ${{ needs.resolve-tag.outputs.tag }}
           - uses: ./
             id: cac
             with:

@@ -1,9 +1,75 @@
 name: 'Cloudentity CAC'
 description: 'Manage Cloudentity configuration as code'
-runs:
-  using: 'docker'
-  image: 'Dockerfile'
-  entrypoint: '/action-entrypoint.sh'
+inputs:
+  args:
+    description: 'Arguments to pass to cac'
+    required: true
 outputs:
   result:
     description: 'Result of the cac command'
+    value: ${{ steps.run.outputs.result }}
+runs:
+  using: 'composite'
+  steps:
+    - name: Restore cached binary
+      id: cache
+      uses: actions/cache@v4
+      with:
+        path: /tmp/cac
+        key: cac-${{ runner.os }}-${{ runner.arch }}-${{ github.action_ref || github.ref_name }}
+
+    - name: Download pre-built binary
+      id: download
+      if: steps.cache.outputs.cache-hit != 'true'
+      shell: bash
+      continue-on-error: true
+      run: |
+        VERSION="${{ github.action_ref || github.ref_name }}"
+        REPO="${{ github.action_repository }}"
+
+        ARCH=$(uname -m)
+        case "$ARCH" in
+          x86_64) ARCH="amd64" ;;
+          aarch64) ARCH="arm64" ;;
+        esac
+        OS=$(uname -s | tr '[:upper:]' '[:lower:]')
+
+        URL="https://github.com/${REPO}/releases/download/${VERSION}/cac_${OS}_${ARCH}.tar.gz"
+        curl -sfL "$URL" -o /tmp/cac.tar.gz
+        tar -xzf /tmp/cac.tar.gz -C /tmp cac
+        chmod +x /tmp/cac
+        echo "Downloaded pre-built binary from ${URL}"
+
+    - name: Check for preinstalled Go
+      id: go-check
+      if: steps.download.outcome == 'failure'
+      shell: bash
+      run: |
+        if command -v go > /dev/null; then
+          echo "Using preinstalled Go: $(go version)"
+          echo "preinstalled=true" >> "$GITHUB_OUTPUT"
+        else
+          echo "preinstalled=false" >> "$GITHUB_OUTPUT"
+        fi
+
+    - name: Install Go
+      if: steps.download.outcome == 'failure' && steps.go-check.outputs.preinstalled != 'true'
+      uses: actions/setup-go@v5
+      with:
+        go-version-file: '${{ github.action_path }}/go.mod'
+
+    - name: Build from source
+      if: steps.download.outcome == 'failure'
+      shell: bash
+      run: |
+        cd "${{ github.action_path }}"
+        CGO_ENABLED=0 go build -o /tmp/cac .
+        echo "Built from source (no pre-built binary available for this ref)"
+
+    - name: Run cac
+      id: run
+      shell: bash
+      run: |
+        /tmp/cac ${{ inputs.args }} > /tmp/out
+        content=$(awk '{printf "%s\\n", $0}' /tmp/out)
+        echo "result=$content" >> "$GITHUB_OUTPUT"

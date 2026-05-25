@@ -13,7 +13,28 @@ import (
 var (
 	pushCmd = &cobra.Command{
 		Use:   "push",
-		Short: "push local configuration",
+		Short: "Push local configuration to a SecureAuth server",
+		Long: `Push local configuration to a SecureAuth server.
+
+The --method flag is required and controls how the local configuration is applied
+to the remote server. Use --dry-run to write the resolved configuration to disk or
+stdout instead of pushing it.
+
+Examples:
+  # Merge local workspace config into the remote workspace
+  cac --config ./cac.yaml --profile dev --workspace demo push --method patch
+
+  # Replace the remote workspace with local config
+  cac --config ./cac.yaml --profile dev --workspace demo push --method import
+
+  # Dry-run: write the resolved configuration to ./out/ instead of the server
+  cac --config ./cac.yaml --profile dev --workspace demo push --method patch --dry-run --out ./out/
+
+  # Dry-run to stdout
+  cac --config ./cac.yaml --profile dev --workspace demo push --method patch --dry-run --out -
+
+  # Push only specific resources
+  cac --config ./cac.yaml --profile dev --workspace demo push --method patch --filter clients,services`,
 		RunE: func(cmd *cobra.Command, args []string) error {
 			var (
 				app  *cac.Application
@@ -88,12 +109,39 @@ var (
 )
 
 func init() {
-	pushCmd.PersistentFlags().BoolVar(&pushConfig.DryRun, "dry-run", false, "Write files to disk instead of pushing to server")
-	pushCmd.PersistentFlags().StringVar(&pushConfig.Out, "out", "-", "Dry execution output. It can be a file, directory or '-' for stdout")
-	pushCmd.PersistentFlags().StringVar(&pushConfig.Mode, "mode", "update", "One of ignore, fail, update")
-	pushCmd.PersistentFlags().StringVar(&pushConfig.Method, "method", "", "One of patch (merges remote with your config before applying), import (replaces remote with your config)")
-	pushCmd.PersistentFlags().BoolVar(&pushConfig.NoLocalValidate, "no-validate", false, "Temporary workaround to skip local validation, which in some cases does not validate a valid config")
-	pushCmd.PersistentFlags().StringSliceVar(&pushConfig.Filters, "filter", []string{}, "Push only selected resources")
+	pushCmd.PersistentFlags().BoolVar(&pushConfig.DryRun, "dry-run", false, `Write the resolved configuration to disk or stdout instead of pushing to the server.
+Use with --out to control the destination.
+Example: --dry-run --out ./out/`)
+	pushCmd.PersistentFlags().StringVar(&pushConfig.Out, "out", "-", `Dry-run output destination: a file path, a directory, or '-' for stdout.
+Only used with --dry-run.
+Examples:
+  --out -            (stdout)
+  --out ./out.yaml   (single file)
+  --out ./out/       (directory)`)
+	pushCmd.PersistentFlags().StringVar(&pushConfig.Mode, "mode", "update", `Conflict resolution mode when a resource already exists on the server.
+One of: ignore, fail, update
+  ignore - skip existing resources
+  fail   - abort the push on conflict
+  update - overwrite the existing resource (default)
+Example: --mode update`)
+	pushCmd.PersistentFlags().StringVar(&pushConfig.Method, "method", "", `How to apply the configuration to the server (required).
+One of: patch, import
+  patch  - merge remote configuration with your local config before applying
+  import - replace remote configuration with your local config
+Example: --method patch`)
+	pushCmd.PersistentFlags().BoolVar(&pushConfig.NoLocalValidate, "no-validate", false, `Skip client-side validation before pushing.
+Workaround for cases where local validation rejects a configuration the server accepts.
+Example: --no-validate`)
+	pushCmd.PersistentFlags().StringSliceVar(&pushConfig.Filters, "filter", []string{}, `Restrict the push to selected top-level resources (comma-separated or repeated).
+Workspace resources: clients, idps, claims, custom_apps, gateways, policies, policy_execution_points,
+                     pools, scopes (alias of scopes_without_service), scripts, script_execution_points,
+                     server_consent, servers_bindings, services, theme_binding, webhooks,
+                     ciba (alias of ciba_authentication_service)
+Tenant resources:    pools, schemas, mfa_methods, themes, servers
+Examples:
+  --filter clients
+  --filter clients,idps,policies
+  --filter scopes --filter pools`)
 
 	mustMarkRequired(pushCmd, "method")
 }
