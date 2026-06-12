@@ -56,16 +56,21 @@ func (c *Configuration) SetImplicitValues(name string, defaultConfig Configurati
 		c.Name = name
 	}
 
-	if c.Logging == nil {
-		c.Logging = defaultConfig.Logging
+	// Fall back to the default config, but as an independent copy so that
+	// profiles never share (and accidentally mutate) the default's objects.
+	if c.Logging == nil && defaultConfig.Logging != nil {
+		clone := *defaultConfig.Logging
+		c.Logging = &clone
 	}
 
-	if c.Client == nil {
-		c.Client = defaultConfig.Client
+	if c.Client == nil && defaultConfig.Client != nil {
+		clone := *defaultConfig.Client
+		c.Client = &clone
 	}
 
-	if c.Storage == nil {
-		c.Storage = defaultConfig.Storage
+	if c.Storage == nil && defaultConfig.Storage != nil {
+		clone := *defaultConfig.Storage
+		c.Storage = &clone
 	}
 }
 
@@ -82,7 +87,7 @@ func InitConfig(path string) (_ *RootConfiguration, err error) {
 	config.Default.SetImplicitValues("default", DefaultConfig())
 
 	utils.ConfigureDecoder(&dconf)
-	v := viper.GetViper()
+	v := viper.New()
 	v.AutomaticEnv()
 	v.SetEnvKeyReplacer(strings.NewReplacer(".", "_"))
 
@@ -98,11 +103,36 @@ func InitConfig(path string) (_ *RootConfiguration, err error) {
 		v.SetDefault(k, val)
 	}
 
+	// Leaf keys of the (squashed) default config, e.g. "client.client_id".
+	// These are the keys that can also be set per profile via env variables.
+	defaultKeys := v.AllKeys()
+
 	if path != "" {
 		v.SetConfigFile(path)
 
 		if err := v.ReadInConfig(); err != nil {
 			return nil, err
+		}
+	}
+
+	// viper's AutomaticEnv only resolves keys it already knows about, and env
+	// bindings do not merge into nested maps that originate from a config file
+	// during Unmarshal. So for every known profile, bind each default config key
+	// to its env variable (e.g. PROFILES_STAGE_CLIENT_CLIENT_ID) and, when that
+	// variable is set, promote it into viper's explicit override layer which is
+	// deep-merged on Unmarshal. Profiles without env overrides are untouched and
+	// still fall back to the default config in SetImplicitValues.
+	for name := range v.GetStringMap("profiles") {
+		for _, key := range defaultKeys {
+			profileKey := "profiles." + name + "." + key
+
+			if err := v.BindEnv(profileKey); err != nil {
+				return nil, err
+			}
+
+			if v.IsSet(profileKey) {
+				v.Set(profileKey, v.Get(profileKey))
+			}
 		}
 	}
 

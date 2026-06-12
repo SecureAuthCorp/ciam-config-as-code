@@ -135,8 +135,8 @@ func TestReadingConfiguration(t *testing.T) {
 		t.Setenv("CLIENT_CLIENT_ID", "test-cid1")
 		t.Setenv("CLIENT_CLIENT_SECRET", "test-secret")
 
-		// FIXME reading profiles from env variables is not yet supported
-		// t.Setenv("PROFILES_STAGE_CLIENT_CLIENT_SECRET", "test-secret")
+		// Reading profile values from env variables is covered by
+		// "profile client from env does not collide with default client from env".
 
 		rootConf, err := config.InitConfig("")
 		require.NoError(t, err)
