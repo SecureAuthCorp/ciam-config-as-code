@@ -16,7 +16,6 @@ import (
 	"github.com/stretchr/testify/require"
 )
 
-
 func TestWritingSecrets(t *testing.T) {
 	var dateTime, _ = strfmt.ParseDateTime("2024-01-23T23:19:30.004+01:00")
 
@@ -39,8 +38,8 @@ func TestWritingSecrets(t *testing.T) {
 		Ext: &api.ServerExtensions{
 			Secrets: map[string]*smodels.Secret{
 				"Some_secret": &smodels.Secret{
-					ID: "Some_secret",
-					Value: "test",				
+					ID:        "Some_secret",
+					Value:     "test",
 					CreatedAt: dateTime,
 				},
 			},
@@ -67,13 +66,12 @@ func TestWritingSecrets(t *testing.T) {
 	require.Equal(t, dateTime, secret.CreatedAt)
 }
 
-
 func TestReadingSecrets(t *testing.T) {
 	var dateTime, _ = strfmt.ParseDateTime("2024-01-23T23:19:30.004+01:00")
 
 	data := smodels.Secret{
-		ID: "Some_secret",
-		Value: "test",				
+		ID:        "Some_secret",
+		Value:     "test",
 		CreatedAt: dateTime,
 	}
 
@@ -115,7 +113,7 @@ func TestReadingSecrets(t *testing.T) {
 	require.NoError(t, err)
 
 	require.NotNil(t, readData)
-	
+
 	files, err := storage.ListFilesInDirectories(st.Config.DirPath...)
 	require.NoError(t, err)
 	require.ElementsMatch(t, []string{"workspaces/demo/server.yaml", "workspaces/demo/secrets/Some_secret.yaml"}, files)
@@ -131,4 +129,55 @@ func TestReadingSecrets(t *testing.T) {
 
 	require.Equal(t, "test", secret.Value)
 	require.Equal(t, dateTime.String(), secret.CreatedAt.String())
+}
+
+func TestReadingTenantSecrets(t *testing.T) {
+	var dateTime, _ = strfmt.ParseDateTime("2024-01-23T23:19:30.004+01:00")
+
+	secret := smodels.Secret{
+		ID:        "Some_secret",
+		Value:     "test",
+		CreatedAt: dateTime,
+	}
+
+	tmpDir := t.TempDir()
+
+	yml, err := utils.ToYaml(secret)
+	require.NoError(t, err)
+
+	err = os.MkdirAll(tmpDir+"/workspaces/demo/secrets", 0755)
+	require.NoError(t, err)
+
+	err = os.WriteFile(tmpDir+"/workspaces/demo/secrets/Some_secret.yaml", yml, 0644)
+	require.NoError(t, err)
+
+	yml, err = utils.ToYaml(models.TreeServer{Name: "demo workspace"})
+	require.NoError(t, err)
+
+	err = os.WriteFile(tmpDir+"/workspaces/demo/server.yaml", yml, 0644)
+	require.NoError(t, err)
+
+	err = logging.InitLogging(&logging.Configuration{Level: "debug"})
+	require.NoError(t, err)
+
+	st, err := storage.InitMultiStorage(&storage.MultiStorageConfiguration{
+		DirPath: []string{t.TempDir(), tmpDir},
+	}, storage.InitTenantStorage)
+	require.NoError(t, err)
+
+	readData, err := st.Read(context.Background(), api.WithSecrets(true))
+	require.NoError(t, err)
+	require.NotNil(t, readData)
+
+	ext, ok := readData.GetExtensions().(*api.TenantExtensions)
+	require.True(t, ok)
+
+	serverExt := ext.GetServerExtensions("demo")
+	require.NotNil(t, serverExt, "tenant extensions should carry the demo server's secrets")
+	require.Len(t, serverExt.Secrets, 1)
+
+	s, ok := serverExt.Secrets["Some_secret"]
+	require.True(t, ok)
+	require.Equal(t, "test", s.Value)
+	require.Equal(t, dateTime.String(), s.CreatedAt.String())
 }

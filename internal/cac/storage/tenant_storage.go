@@ -112,7 +112,7 @@ func (t *TenantStorage) Read(ctx context.Context, opts ...api.SourceOpt) (api.Pa
 	var (
 		path       = t.Config.DirPath
 		tenant     models.Rfc7396PatchOperation
-		ext        = api.TenantExtensions{}
+		ext        = api.TenantExtensions{Servers: map[string]api.ServerExtensions{}}
 		options    = &api.Options{}
 		themeDirs  []string
 		workspaces []string
@@ -204,7 +204,11 @@ func (t *TenantStorage) Read(ctx context.Context, opts ...api.SourceOpt) (api.Pa
 
 			utils.CleanPatch(data)
 
-            servers[workspace] = data
+			servers[workspace] = data
+
+			if sext, ok := workspaceConfig.GetExtensions().(*api.ServerExtensions); ok && sext != nil {
+				ext.Servers[workspace] = *sext
+			}
 		}
 
 		tenant["servers"] = servers
