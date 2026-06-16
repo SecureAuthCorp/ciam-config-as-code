@@ -37,6 +37,26 @@ type PatchImpl[T any] struct {
 	Ext  *T                           `json:"ext,omitempty"`
 }
 
+// mergePatch merges another patch's data and extensions into the given data
+// map and extension pointer, tolerating nil extensions on either side.
+func mergePatch[T any](data *models.Rfc7396PatchOperation, ext **T, other Patch) error {
+	if err := mergo.Merge(data, other.GetData(), mergo.WithOverride); err != nil {
+		return err
+	}
+
+	otherExt, _ := other.GetExtensions().(*T)
+	if otherExt == nil {
+		return nil
+	}
+
+	if *ext == nil {
+		*ext = otherExt
+		return nil
+	}
+
+	return mergo.Merge(*ext, otherExt, mergo.WithOverride)
+}
+
 type ServerPatch PatchImpl[ServerExtensions]
 
 var _ Patch = &ServerPatch{}
@@ -44,22 +64,16 @@ var _ Patch = &ServerPatch{}
 func (sp *ServerPatch) GetData() models.Rfc7396PatchOperation {
 	return sp.Data
 }
-func (tp *ServerPatch) GetExtensions() any {
-	return tp.Ext
+func (sp *ServerPatch) GetExtensions() any {
+	return sp.Ext
 }
 func (sp *ServerPatch) Merge(other Patch) error {
-	if err := mergo.Merge(&sp.Data, other.GetData(), mergo.WithOverride); err != nil {
-		return err
-	}
-
-	if err := mergo.Merge(sp.Ext, other.GetExtensions(), mergo.WithOverride); err != nil {
-		return err
-	}
-
-	return nil
+	return mergePatch(&sp.Data, &sp.Ext, other)
 }
 
 type TenantPatch PatchImpl[TenantExtensions]
+
+var _ Patch = &TenantPatch{}
 
 func (tp *TenantPatch) GetData() models.Rfc7396PatchOperation {
 	return tp.Data
@@ -67,14 +81,6 @@ func (tp *TenantPatch) GetData() models.Rfc7396PatchOperation {
 func (tp *TenantPatch) GetExtensions() any {
 	return tp.Ext
 }
-func (sp *TenantPatch) Merge(other Patch) error {
-	if err := mergo.Merge(&sp.Data, other.GetData(), mergo.WithOverride); err != nil {
-		return err
-	}
-
-	if err := mergo.Merge(sp.Ext, other.GetExtensions(), mergo.WithOverride); err != nil {
-		return err
-	}
-
-	return nil
+func (tp *TenantPatch) Merge(other Patch) error {
+	return mergePatch(&tp.Data, &tp.Ext, other)
 }

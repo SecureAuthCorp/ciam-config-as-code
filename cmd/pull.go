@@ -48,7 +48,9 @@ var (
 					return err
 				}
 			} else {
-				bts, err := utils.ToYaml(data)
+				// emit the configuration tree itself rather than the internal
+				// patch envelope (data/ext wrapper)
+				bts, err := utils.ToYaml(data.GetData())
 
 				if err != nil {
 					return errors.Wrap(err, "failed to marshal data to YAML")
