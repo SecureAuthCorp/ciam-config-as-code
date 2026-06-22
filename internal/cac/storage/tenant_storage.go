@@ -2,7 +2,9 @@ package storage
 
 import (
     "context"
+    "encoding/json"
     "github.com/cloudentity/acp-client-go/clients/hub/models"
+    smodels "github.com/cloudentity/acp-client-go/clients/system/models"
     "github.com/cloudentity/cac/internal/cac/api"
     "github.com/cloudentity/cac/internal/cac/utils"
     "path/filepath"
@@ -28,6 +30,10 @@ func (t *TenantStorage) Write(ctx context.Context, data models.Rfc7396PatchOpera
     )
 
     if model, err = utils.FromPatchToModel[models.TreeTenant](data); err != nil {
+        return err
+    }
+
+    if err = t.storeTenant(path, model); err != nil {
         return err
     }
 
@@ -193,6 +199,25 @@ func (t *TenantStorage) Read(ctx context.Context, opts ...api.SourceOpt) (models
 }
 
 var _ Storage = &TenantStorage{}
+
+func (t *TenantStorage) storeTenant(path string, data *models.TreeTenant) error {
+    var (
+        tenant smodels.Tenant
+        bts    []byte
+        err    error
+    )
+
+    // serialize the tenant data into system/models to remove the dependencies which are stored in separate files
+    if bts, err = json.Marshal(data); err != nil {
+        return err
+    }
+
+    if err = json.Unmarshal(bts, &tenant); err != nil {
+        return err
+    }
+
+    return writeFile(tenant, filepath.Join(path, "tenant"))
+}
 
 func storeTemplates(templates models.TreeTemplates, path string) error {
     for id, template := range templates {
