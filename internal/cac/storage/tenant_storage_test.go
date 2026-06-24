@@ -189,6 +189,12 @@ webauthn_settings:
                 Metadata: models.TenantMetadata{
                     "owner": "platform-team",
                 },
+                Settings: &models.TenantSettings{
+                    MessageRedaction: &models.RedactionPolicy{
+                        Address: "obfuscate",
+                        Content: "retain",
+                    },
+                },
                 MfaMethods: models.TreeMFAMethods{
                     "sms": models.TreeMFAMethod{
                         Enabled:   true,
@@ -206,7 +212,11 @@ webauthn_settings:
                     require.YAMLEq(t, `name: Default
 url: https://example.com/default
 metadata:
-  owner: platform-team`, string(bts))
+  owner: platform-team
+settings:
+  message_redaction:
+    address: obfuscate
+    content: retain`, string(bts))
                 }
             },
         },
