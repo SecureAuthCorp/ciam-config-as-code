@@ -168,6 +168,7 @@ identifier_case_insensitive: false
 mfa_session_ttl: 0s
 name: Idp-datamigration-pool
 otp_settings:
+  require_user_confirmation_before_send: false
   verify_address:
     length: 6
     ttl: 5m0s
@@ -178,6 +179,45 @@ webauthn_settings:
   rp_id: example.com
   rp_origins:
     - https://www.sit2.example.com`, string(bts))
+            },
+        },
+        {
+            desc: "tenant level configuration",
+            data: &models.TreeTenant{
+                Name: "Default",
+                URL:  "https://example.com/default",
+                Metadata: models.TenantMetadata{
+                    "owner": "platform-team",
+                },
+                Settings: &models.TenantSettings{
+                    MessageRedaction: &models.RedactionPolicy{
+                        Address: "obfuscate",
+                        Content: "retain",
+                    },
+                },
+                MfaMethods: models.TreeMFAMethods{
+                    "sms": models.TreeMFAMethod{
+                        Enabled:   true,
+                        Mechanism: "sms",
+                    },
+                },
+            },
+            files: []string{
+                "tenant.yaml",
+                "mfa_methods/sms.yaml",
+            },
+            assert: func(t *testing.T, path string, bts []byte) {
+                switch path {
+                case "tenant.yaml":
+                    require.YAMLEq(t, `name: Default
+url: https://example.com/default
+metadata:
+  owner: platform-team
+settings:
+  message_redaction:
+    address: obfuscate
+    content: retain`, string(bts))
+                }
             },
         },
         {
