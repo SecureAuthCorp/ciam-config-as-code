@@ -2,3 +2,4 @@
 .idea
 /cac
 examples/e2e-local/
+.env.local

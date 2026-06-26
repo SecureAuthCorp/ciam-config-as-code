@@ -1,0 +1,28 @@
+name: e2e
+
+# Runs the real-server end-to-end suite against the test tenant. Triggered by
+# the merge queue so it executes once on the rebased to-be-merged HEAD and
+# blocks the merge if it fails — not on every PR commit. Also runnable manually.
+on:
+  merge_group:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  e2e:
+    runs-on: ubuntu-latest
+    environment: e2e # holds the test-tenant secrets
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-go@v5
+        with:
+          go-version-file: go.mod
+      - name: run e2e suite
+        run: go test -tags e2e -timeout 20m -v ./e2e/...
+        env:
+          CAC_E2E_ISSUER_URL: ${{ secrets.CAC_E2E_ISSUER_URL }}
+          CAC_E2E_TENANT_ID: ${{ secrets.CAC_E2E_TENANT_ID }}
+          CAC_E2E_CLIENT_ID: ${{ secrets.CAC_E2E_CLIENT_ID }}
+          CAC_E2E_CLIENT_SECRET: ${{ secrets.CAC_E2E_CLIENT_SECRET }}
