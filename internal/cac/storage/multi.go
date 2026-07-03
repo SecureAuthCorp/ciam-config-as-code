@@ -14,6 +14,22 @@ type MultiStorageConfiguration struct {
 	DirPath []string `json:"dir_path"`
 }
 
+// Clone returns a copy with its own backing DirPath slice so callers never
+// share (and accidentally mutate) the original's slice.
+func (c *MultiStorageConfiguration) Clone() *MultiStorageConfiguration {
+	if c == nil {
+		return nil
+	}
+
+	clone := *c
+
+	if c.DirPath != nil {
+		clone.DirPath = append([]string(nil), c.DirPath...)
+	}
+
+	return &clone
+}
+
 var DefaultMultiStorageConfig = func() *MultiStorageConfiguration {
 	return &MultiStorageConfiguration{
 		DirPath: []string{"data"},

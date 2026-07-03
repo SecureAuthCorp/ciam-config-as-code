@@ -11,3 +11,6 @@ profiles:
   stage:
     storage:
       dir_path: "/tmp/stage-data"
+  # a profile that declares nothing of its own, so client and storage both fall
+  # back to (independent copies of) the default config
+  bare: {}

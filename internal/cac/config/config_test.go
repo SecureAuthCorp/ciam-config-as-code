@@ -100,7 +100,9 @@ func TestReadingConfiguration(t *testing.T) {
 		require.Equal(t, "env-stage-secret", stage.Client.ClientSecret)
 		require.Equal(t, "https://stage.example.com/stage/system", stage.Client.IssuerURL.String())
 
-		// the two clients must not be the same backing object
+		// the two clients must not be the same backing object; assert pointer
+		// inequality directly so a regression is caught even if the IDs match
+		require.NotSame(t, defaultConf.Client, stage.Client)
 		require.NotEqual(t, defaultConf.Client.ClientID, stage.Client.ClientID)
 	})
 
@@ -128,6 +130,28 @@ func TestReadingConfiguration(t *testing.T) {
 		stage.Client.ClientID = "mutated-via-stage"
 		require.Equal(t, "env-default-id", defaultConf.Client.ClientID,
 			"mutating the profile client must not affect the default client")
+
+		// reference fields inside the embedded acpclient.Config must be
+		// deep-copied too, not aliased between the profile and the default
+		require.NotNil(t, defaultConf.Client.IssuerURL)
+		require.NotSame(t, defaultConf.Client.IssuerURL, stage.Client.IssuerURL,
+			"the profile client must not share the default's IssuerURL pointer")
+
+		require.NotEmpty(t, defaultConf.Client.Scopes)
+		stage.Client.Scopes[0] = "mutated-scope"
+		require.NotEqual(t, "mutated-scope", defaultConf.Client.Scopes[0],
+			"mutating the profile client scopes must not affect the default client")
+
+		// a profile without its own storage falls back to the default storage,
+		// which must also be an independent copy (its DirPath slice is not shared)
+		bare, err := rootConf.ForProfile("bare")
+		require.NoError(t, err)
+
+		require.NotSame(t, defaultConf.Storage, bare.Storage)
+		require.NotEmpty(t, defaultConf.Storage.DirPath)
+		bare.Storage.DirPath[0] = "/tmp/mutated"
+		require.NotEqual(t, "/tmp/mutated", defaultConf.Storage.DirPath[0],
+			"mutating the profile storage dir path must not affect the default storage")
 	})
 
 	t.Run("read config from env", func(t *testing.T) {

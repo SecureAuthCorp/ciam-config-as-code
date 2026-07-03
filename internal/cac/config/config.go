@@ -1,6 +1,7 @@
 package config
 
 import (
+	"os"
 	"strings"
 
 	"github.com/cloudentity/cac/internal/cac/client"
@@ -58,19 +59,20 @@ func (c *Configuration) SetImplicitValues(name string, defaultConfig Configurati
 
 	// Fall back to the default config, but as an independent copy so that
 	// profiles never share (and accidentally mutate) the default's objects.
+	// Logging only holds value fields, so a plain struct copy is enough; the
+	// client and storage configs carry reference fields and are deep-copied
+	// via their Clone methods.
 	if c.Logging == nil && defaultConfig.Logging != nil {
 		clone := *defaultConfig.Logging
 		c.Logging = &clone
 	}
 
 	if c.Client == nil && defaultConfig.Client != nil {
-		clone := *defaultConfig.Client
-		c.Client = &clone
+		c.Client = defaultConfig.Client.Clone()
 	}
 
 	if c.Storage == nil && defaultConfig.Storage != nil {
-		clone := *defaultConfig.Storage
-		c.Storage = &clone
+		c.Storage = defaultConfig.Storage.Clone()
 	}
 }
 
@@ -88,8 +90,9 @@ func InitConfig(path string) (_ *RootConfiguration, err error) {
 
 	utils.ConfigureDecoder(&dconf)
 	v := viper.New()
+	envKeyReplacer := strings.NewReplacer(".", "_")
 	v.AutomaticEnv()
-	v.SetEnvKeyReplacer(strings.NewReplacer(".", "_"))
+	v.SetEnvKeyReplacer(envKeyReplacer)
 
 	if decoder, err = mapstructure.NewDecoder(&dconf); err != nil {
 		return nil, err
@@ -118,10 +121,13 @@ func InitConfig(path string) (_ *RootConfiguration, err error) {
 	// viper's AutomaticEnv only resolves keys it already knows about, and env
 	// bindings do not merge into nested maps that originate from a config file
 	// during Unmarshal. So for every known profile, bind each default config key
-	// to its env variable (e.g. PROFILES_STAGE_CLIENT_CLIENT_ID) and, when that
-	// variable is set, promote it into viper's explicit override layer which is
-	// deep-merged on Unmarshal. Profiles without env overrides are untouched and
-	// still fall back to the default config in SetImplicitValues.
+	// to its env variable (e.g. PROFILES_STAGE_CLIENT_CLIENT_ID) and, only when
+	// that env variable is actually set, promote its value into viper's explicit
+	// override layer which is deep-merged on Unmarshal. We gate on os.LookupEnv
+	// (not v.IsSet, which is also true for config-file values) so file-provided
+	// values stay in their native layer and profiles without env overrides are
+	// left untouched, still falling back to the default config in
+	// SetImplicitValues.
 	for name := range v.GetStringMap("profiles") {
 		for _, key := range defaultKeys {
 			profileKey := "profiles." + name + "." + key
@@ -130,7 +136,9 @@ func InitConfig(path string) (_ *RootConfiguration, err error) {
 				return nil, err
 			}
 
-			if v.IsSet(profileKey) {
+			envKey := envKeyReplacer.Replace(strings.ToUpper(profileKey))
+
+			if _, ok := os.LookupEnv(envKey); ok {
 				v.Set(profileKey, v.Get(profileKey))
 			}
 		}
