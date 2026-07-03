@@ -12,14 +12,32 @@ runs:
   using: 'composite'
   steps:
     # github.action_ref is empty inside a composite action's run steps (and
-    # leaks the ref of `uses:` steps like actions/cache). github.action_path is
-    # reliable; its last segment is the ref: .../_actions/<owner>/<repo>/<ref>
-    - name: Resolve action ref
+    # leaks the ref of `uses:` steps like actions/cache), so we resolve the
+    # release repo/tag ourselves.
+    #
+    # When the action is consumed remotely (uses: owner/repo@ref) github.action_path
+    # is .../_actions/<owner>/<repo>/<ref>, so both repo and version come from it.
+    # When it is used locally (uses: ./) github.action_path is just the checked-out
+    # repo directory, so we fall back to the caller repo plus the checked-out tag
+    # (github.ref_name is the workflow trigger ref, which is not the tag for
+    # release-testing jobs, so prefer the exact tag git actually checked out).
+    - name: Resolve action repo and version
       id: meta
       shell: bash
       run: |
         AP="${{ github.action_path }}"
-        echo "version=${AP##*/}" >> "$GITHUB_OUTPUT"
+        if [[ "$AP" == *"/_actions/"* ]]; then
+          REST="${AP#*/_actions/}"
+          OWNER="${REST%%/*}"; REST="${REST#*/}"
+          NAME="${REST%%/*}"; REF="${REST#*/}"
+          REPO="${OWNER}/${NAME}"
+          VERSION="${REF}"
+        else
+          REPO="${{ github.repository }}"
+          VERSION="$(git -C "$AP" describe --tags --exact-match 2>/dev/null || echo "${{ github.ref_name }}")"
+        fi
+        echo "repo=${REPO}" >> "$GITHUB_OUTPUT"
+        echo "version=${VERSION}" >> "$GITHUB_OUTPUT"
 
     - name: Restore cached binary
       id: cache
@@ -35,7 +53,7 @@ runs:
       continue-on-error: true
       run: |
         VERSION="${{ steps.meta.outputs.version }}"
-        REPO="SecureAuthCorp/ciam-config-as-code"
+        REPO="${{ steps.meta.outputs.repo }}"
 
         ARCH=$(uname -m)
         case "$ARCH" in
