@@ -1,7 +1,11 @@
 package utils
 
 import (
+	"reflect"
+	"strings"
+
 	"github.com/cloudentity/acp-client-go/clients/hub/models"
+	smodels "github.com/cloudentity/acp-client-go/clients/system/models"
 	"github.com/go-json-experiment/json"
 	"github.com/pkg/errors"
 )
@@ -74,43 +78,46 @@ var staticFilterMappings = map[string]string{
 }
 
 // RootFilter is a reserved --filter value that selects only root-level config,
-// i.e. every top-level key that is not a known nested sub-resource collection.
+// i.e. the tenant/workspace's own fields, excluding nested sub-resources.
 const RootFilter = "root"
 
-// TenantCollectionKeys are the top-level tenant keys that are nested sub-resource
-// collections rather than root-level tenant config. They mirror the keys the
-// tenant storage layer splits into separate files/directories.
-var TenantCollectionKeys = []string{
-	"pools", "schemas", "mfa_methods", "themes", "servers",
+// TenantRootKeys and ServerRootKeys hold the top-level JSON field names that make
+// up root-level tenant / workspace config. They are derived from the same models
+// the storage layer serializes the root tenant/server file into (with nested
+// dependencies stripped), so new root fields are picked up automatically without a
+// hand-maintained list.
+var (
+	TenantRootKeys = modelJSONKeys(reflect.TypeFor[smodels.Tenant]())
+	ServerRootKeys = modelJSONKeys(reflect.TypeFor[smodels.ServerDump]())
+)
+
+// modelJSONKeys returns the set of top-level JSON field names of a struct type.
+func modelJSONKeys(t reflect.Type) map[string]struct{} {
+	keys := make(map[string]struct{}, t.NumField())
+
+	for i := 0; i < t.NumField(); i++ {
+		name, _, _ := strings.Cut(t.Field(i).Tag.Get("json"), ",")
+		if name == "" || name == "-" {
+			continue
+		}
+
+		keys[name] = struct{}{}
+	}
+
+	return keys
 }
 
-// ServerCollectionKeys are the top-level workspace keys that are nested sub-resource
-// collections rather than root-level workspace config. They mirror the keys the
-// server storage layer splits into separate files/directories.
-var ServerCollectionKeys = []string{
-	"clients", "idps", "claims", "custom_apps", "gateways",
-	"policy_execution_points", "pools", "scopes_without_service",
-	"script_execution_points", "server_consent", "ciba_authentication_service",
-	"servers_bindings", "services", "theme_binding", "webhooks", "scripts",
-	"policies",
-}
-
-func FilterPatch(patch models.Rfc7396PatchOperation, filters []string, collections []string) (models.Rfc7396PatchOperation, error) {
+func FilterPatch(patch models.Rfc7396PatchOperation, filters []string, rootKeys map[string]struct{}) (models.Rfc7396PatchOperation, error) {
 	if len(filters) == 0 {
 		return patch, nil
 	}
 
 	var newPatch = models.Rfc7396PatchOperation{}
 
-	collectionSet := make(map[string]struct{}, len(collections))
-	for _, c := range collections {
-		collectionSet[c] = struct{}{}
-	}
-
 	for _, filter := range filters {
 		if filter == RootFilter {
-			for k, v := range patch {
-				if _, isCollection := collectionSet[k]; !isCollection {
+			for k := range rootKeys {
+				if v, ok := patch[k]; ok {
 					newPatch[k] = v
 				}
 			}
