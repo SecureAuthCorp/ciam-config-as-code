@@ -79,7 +79,7 @@ func (c *Client) Read(ctx context.Context, opts ...api.SourceOpt) (models.Rfc739
 		return nil, errors.Wrap(err, "failed to convert tree server to patch")
 	}
 
-	if data, err = utils.FilterPatch(data, options.Filters); err != nil {
+	if data, err = utils.FilterPatch(data, options.Filters, utils.ServerCollectionKeys); err != nil {
 		return nil, errors.Wrap(err, "failed to filter patch")
 	}
 

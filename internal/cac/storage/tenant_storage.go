@@ -191,7 +191,7 @@ func (t *TenantStorage) Read(ctx context.Context, opts ...api.SourceOpt) (models
         tenant["servers"] = servers
     }
 
-    if tenant, err = utils.FilterPatch(tenant, options.Filters); err != nil {
+    if tenant, err = utils.FilterPatch(tenant, options.Filters, utils.TenantCollectionKeys); err != nil {
         return nil, err
     }
 

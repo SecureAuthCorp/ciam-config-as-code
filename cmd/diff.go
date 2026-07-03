@@ -134,9 +134,12 @@ Workspace resources: clients, idps, claims, custom_apps, gateways, policies, pol
                      server_consent, servers_bindings, services, theme_binding, webhooks,
                      ciba (alias of ciba_authentication_service)
 Tenant resources:    pools, schemas, mfa_methods, themes, servers
+Reserved:            root (only root-level tenant/workspace config, excluding nested resources)
 Examples:
   --filter clients
-  --filter clients,idps,policies`)
+  --filter clients,idps,policies
+  --filter root
+  --filter root,clients`)
 	diffCmd.PersistentFlags().StringVar(&diffConfig.Out, "out", "-", `Diff output destination: a file path or '-' for stdout.
 Examples:
   --out -            (stdout)

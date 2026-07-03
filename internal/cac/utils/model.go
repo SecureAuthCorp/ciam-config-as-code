@@ -73,14 +73,51 @@ var staticFilterMappings = map[string]string{
 	"ciba":   "ciba_authentication_service",
 }
 
-func FilterPatch(patch models.Rfc7396PatchOperation, filters []string) (models.Rfc7396PatchOperation, error) {
+// RootFilter is a reserved --filter value that selects only root-level config,
+// i.e. every top-level key that is not a known nested sub-resource collection.
+const RootFilter = "root"
+
+// TenantCollectionKeys are the top-level tenant keys that are nested sub-resource
+// collections rather than root-level tenant config. They mirror the keys the
+// tenant storage layer splits into separate files/directories.
+var TenantCollectionKeys = []string{
+	"pools", "schemas", "mfa_methods", "themes", "servers",
+}
+
+// ServerCollectionKeys are the top-level workspace keys that are nested sub-resource
+// collections rather than root-level workspace config. They mirror the keys the
+// server storage layer splits into separate files/directories.
+var ServerCollectionKeys = []string{
+	"clients", "idps", "claims", "custom_apps", "gateways",
+	"policy_execution_points", "pools", "scopes_without_service",
+	"script_execution_points", "server_consent", "ciba_authentication_service",
+	"servers_bindings", "services", "theme_binding", "webhooks", "scripts",
+	"policies",
+}
+
+func FilterPatch(patch models.Rfc7396PatchOperation, filters []string, collections []string) (models.Rfc7396PatchOperation, error) {
 	if len(filters) == 0 {
 		return patch, nil
 	}
 
 	var newPatch = models.Rfc7396PatchOperation{}
 
+	collectionSet := make(map[string]struct{}, len(collections))
+	for _, c := range collections {
+		collectionSet[c] = struct{}{}
+	}
+
 	for _, filter := range filters {
+		if filter == RootFilter {
+			for k, v := range patch {
+				if _, isCollection := collectionSet[k]; !isCollection {
+					newPatch[k] = v
+				}
+			}
+
+			continue
+		}
+
 		if mapped, ok := staticFilterMappings[filter]; ok {
 			filter = mapped
 		}
