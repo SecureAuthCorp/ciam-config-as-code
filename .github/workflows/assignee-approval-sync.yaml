@@ -1,0 +1,58 @@
+name: Sync bot approval with assignee
+
+on:
+  pull_request_review:
+    types: [submitted, dismissed, edited]
+  pull_request:
+    types: [assigned, unassigned, synchronize]
+
+permissions:
+  pull-requests: write
+
+jobs:
+  sync:
+    runs-on: ubuntu-latest
+    if: github.event.pull_request.head.repo.full_name == github.repository && github.event.pull_request.user.login != 'dependabot[bot]'
+    steps:
+      - name: Mirror assignee approval as a second (bot) approval
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          BOT: "github-actions[bot]"
+          PR: ${{ github.event.pull_request.number }}
+          REPO: ${{ github.repository }}
+          AUTHOR: ${{ github.event.pull_request.user.login }}
+        run: |
+          assignees=$(gh pr view "$PR" -R "$REPO" --json assignees -q '.assignees[].login')
+          reviews=$(gh api "/repos/$REPO/pulls/$PR/reviews" --paginate --jq '.[]' | jq -s '.')
+
+          # Latest review of any non-author assignee is APPROVED?
+          # (GitHub ignores the author's own approval for required approvals.)
+          approved=false
+          for a in $assignees; do
+            [ "$a" = "$AUTHOR" ] && continue
+            state=$(echo "$reviews" | jq -r --arg u "$a" \
+              '[.[]|select(.user.login==$u)]|last|.state // empty')
+            [ "$state" = "APPROVED" ] && approved=true
+          done
+
+          # Any unresolved review threads block the bot approval.
+          unresolved=$(gh api graphql \
+            -F owner="${REPO%/*}" -F name="${REPO#*/}" -F pr="$PR" -f query='
+              query($owner: String!, $name: String!, $pr: Int!) {
+                repository(owner: $owner, name: $name) {
+                  pullRequest(number: $pr) {
+                    reviewThreads(first: 100) { nodes { isResolved } }
+                  }
+                }
+              }' --jq '[.data.repository.pullRequest.reviewThreads.nodes[] | select(.isResolved | not)] | length')
+
+          # Bot's active approval = its latest review, only if still APPROVED
+          botrev=$(echo "$reviews" | jq -r --arg b "$BOT" \
+            '([.[]|select(.user.login==$b)]|last) as $r | if $r.state=="APPROVED" then $r.id else empty end')
+
+          if $approved && [ "$unresolved" -eq 0 ] && [ -z "$botrev" ]; then
+            gh pr review "$PR" -R "$REPO" --approve --body "Auto-approve: assignee approved and no unresolved comments."
+          elif { ! $approved || [ "$unresolved" -gt 0 ]; } && [ -n "$botrev" ]; then
+            gh api -X PUT "/repos/$REPO/pulls/$PR/reviews/$botrev/dismissals" \
+              -f message="Approval conditions no longer met — dismissing bot approval."
+          fi
