@@ -91,43 +91,16 @@ var (
 	ServerRootKeys = modelJSONKeys(reflect.TypeFor[smodels.ServerDump]())
 )
 
-// modelJSONKeys returns the set of top-level JSON field names of a struct type,
-// dereferencing pointer types first. Non-struct types yield an empty set instead
-// of panicking, as this runs at package init time.
+// modelJSONKeys returns the set of top-level JSON field names of a struct type.
+// It intentionally only handles explicitly tagged struct fields — the swagger-generated
+// models it is used with tag every field; extend it if that ever stops holding.
 func modelJSONKeys(t reflect.Type) map[string]struct{} {
-	for t.Kind() == reflect.Pointer {
-		t = t.Elem()
-	}
-
-	keys := map[string]struct{}{}
-
-	if t.Kind() != reflect.Struct {
-		return keys
-	}
+	keys := make(map[string]struct{}, t.NumField())
 
 	for i := 0; i < t.NumField(); i++ {
-		f := t.Field(i)
-		if !f.IsExported() {
+		name, _, _ := strings.Cut(t.Field(i).Tag.Get("json"), ",")
+		if name == "" || name == "-" {
 			continue
-		}
-
-		name, _, _ := strings.Cut(f.Tag.Get("json"), ",")
-		if name == "-" {
-			continue
-		}
-
-		// untagged embedded structs are inlined, mirroring JSON embedding rules
-		if name == "" && f.Anonymous {
-			for k := range modelJSONKeys(f.Type) {
-				keys[k] = struct{}{}
-			}
-
-			continue
-		}
-
-		// untagged (or tag-option-only) fields serialize under the field name
-		if name == "" {
-			name = f.Name
 		}
 
 		keys[name] = struct{}{}
