@@ -85,15 +85,25 @@ const RootFilter = "root"
 // up root-level tenant / workspace config. They are derived from the same models
 // the storage layer serializes the root tenant/server file into (with nested
 // dependencies stripped), so new root fields are picked up automatically without a
-// hand-maintained list.
+// hand-maintained list. Both are read-only after package init and must not be mutated.
 var (
 	TenantRootKeys = modelJSONKeys(reflect.TypeFor[smodels.Tenant]())
 	ServerRootKeys = modelJSONKeys(reflect.TypeFor[smodels.ServerDump]())
 )
 
-// modelJSONKeys returns the set of top-level JSON field names of a struct type.
+// modelJSONKeys returns the set of top-level JSON field names of a struct type,
+// dereferencing pointer types first. Non-struct types yield an empty set instead
+// of panicking, as this runs at package init time.
 func modelJSONKeys(t reflect.Type) map[string]struct{} {
-	keys := make(map[string]struct{}, t.NumField())
+	for t.Kind() == reflect.Pointer {
+		t = t.Elem()
+	}
+
+	keys := map[string]struct{}{}
+
+	if t.Kind() != reflect.Struct {
+		return keys
+	}
 
 	for i := 0; i < t.NumField(); i++ {
 		name, _, _ := strings.Cut(t.Field(i).Tag.Get("json"), ",")
