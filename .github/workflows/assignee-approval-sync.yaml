@@ -35,6 +35,10 @@ jobs:
             [ "$state" = "APPROVED" ] && approved=true
           done
 
+          # Copilot must have reviewed this PR for the bot approval to apply.
+          copilot_reviewed=$(echo "$reviews" | jq -r \
+            '[.[]|select(.user.login=="copilot-pull-request-reviewer[bot]")]|length > 0')
+
           # Any unresolved review threads block the bot approval.
           unresolved=$(gh api graphql \
             -F owner="${REPO%/*}" -F name="${REPO#*/}" -F pr="$PR" -f query='
@@ -50,9 +54,9 @@ jobs:
           botrev=$(echo "$reviews" | jq -r --arg b "$BOT" \
             '([.[]|select(.user.login==$b)]|last) as $r | if $r.state=="APPROVED" then $r.id else empty end')
 
-          if $approved && [ "$unresolved" -eq 0 ] && [ -z "$botrev" ]; then
-            gh pr review "$PR" -R "$REPO" --approve --body "Auto-approve: assignee approved and no unresolved comments."
-          elif { ! $approved || [ "$unresolved" -gt 0 ]; } && [ -n "$botrev" ]; then
+          if $approved && $copilot_reviewed && [ "$unresolved" -eq 0 ] && [ -z "$botrev" ]; then
+            gh pr review "$PR" -R "$REPO" --approve --body "Auto-approve: assignee approved, Copilot reviewed, and no unresolved comments."
+          elif { ! $approved || ! $copilot_reviewed || [ "$unresolved" -gt 0 ]; } && [ -n "$botrev" ]; then
             gh api -X PUT "/repos/$REPO/pulls/$PR/reviews/$botrev/dismissals" \
               -f message="Approval conditions no longer met — dismissing bot approval."
           fi
