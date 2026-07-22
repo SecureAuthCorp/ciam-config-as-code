@@ -22,6 +22,8 @@ jobs:
           REPO: ${{ github.repository }}
           AUTHOR: ${{ github.event.pull_request.user.login }}
         run: |
+          set -euo pipefail
+
           assignees=$(gh pr view "$PR" -R "$REPO" --json assignees -q '.assignees[].login')
           reviews=$(gh api "/repos/$REPO/pulls/$PR/reviews" --paginate --jq '.[]' | jq -s '.')
 
@@ -40,15 +42,20 @@ jobs:
             '[.[]|select(.user.login=="copilot-pull-request-reviewer[bot]")]|length > 0')
 
           # Any unresolved review threads block the bot approval.
-          unresolved=$(gh api graphql \
+          # --paginate walks all pages; --jq emits a per-page count, summed below.
+          unresolved=$(gh api graphql --paginate \
             -F owner="${REPO%/*}" -F name="${REPO#*/}" -F pr="$PR" -f query='
-              query($owner: String!, $name: String!, $pr: Int!) {
+              query($owner: String!, $name: String!, $pr: Int!, $endCursor: String) {
                 repository(owner: $owner, name: $name) {
                   pullRequest(number: $pr) {
-                    reviewThreads(first: 100) { nodes { isResolved } }
+                    reviewThreads(first: 100, after: $endCursor) {
+                      pageInfo { hasNextPage endCursor }
+                      nodes { isResolved }
+                    }
                   }
                 }
-              }' --jq '[.data.repository.pullRequest.reviewThreads.nodes[] | select(.isResolved | not)] | length')
+              }' --jq '[.data.repository.pullRequest.reviewThreads.nodes[] | select(.isResolved | not)] | length' \
+            | awk '{s+=$1} END {print s+0}')
 
           # Bot's active approval = its latest review, only if still APPROVED
           botrev=$(echo "$reviews" | jq -r --arg b "$BOT" \
