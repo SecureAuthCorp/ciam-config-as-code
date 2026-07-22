@@ -106,9 +106,28 @@ func modelJSONKeys(t reflect.Type) map[string]struct{} {
 	}
 
 	for i := 0; i < t.NumField(); i++ {
-		name, _, _ := strings.Cut(t.Field(i).Tag.Get("json"), ",")
-		if name == "" || name == "-" {
+		f := t.Field(i)
+		if !f.IsExported() {
 			continue
+		}
+
+		name, _, _ := strings.Cut(f.Tag.Get("json"), ",")
+		if name == "-" {
+			continue
+		}
+
+		// untagged embedded structs are inlined, mirroring JSON embedding rules
+		if name == "" && f.Anonymous {
+			for k := range modelJSONKeys(f.Type) {
+				keys[k] = struct{}{}
+			}
+
+			continue
+		}
+
+		// untagged (or tag-option-only) fields serialize under the field name
+		if name == "" {
+			name = f.Name
 		}
 
 		keys[name] = struct{}{}
