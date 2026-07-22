@@ -1,7 +1,11 @@
 package utils
 
 import (
+	"reflect"
+	"strings"
+
 	"github.com/cloudentity/acp-client-go/clients/hub/models"
+	smodels "github.com/cloudentity/acp-client-go/clients/system/models"
 	"github.com/go-json-experiment/json"
 	"github.com/pkg/errors"
 )
@@ -73,7 +77,39 @@ var staticFilterMappings = map[string]string{
 	"ciba":   "ciba_authentication_service",
 }
 
-func FilterPatch(patch models.Rfc7396PatchOperation, filters []string) (models.Rfc7396PatchOperation, error) {
+// RootFilter is a reserved --filter value that selects only root-level config,
+// i.e. the tenant/workspace's own fields, excluding nested sub-resources.
+const RootFilter = "root"
+
+// TenantRootKeys and ServerRootKeys hold the top-level JSON field names that make
+// up root-level tenant / workspace config. They are derived from the same models
+// the storage layer serializes the root tenant/server file into (with nested
+// dependencies stripped), so new root fields are picked up automatically without a
+// hand-maintained list. Both are read-only after package init and must not be mutated.
+var (
+	TenantRootKeys = modelJSONKeys(reflect.TypeFor[smodels.Tenant]())
+	ServerRootKeys = modelJSONKeys(reflect.TypeFor[smodels.ServerDump]())
+)
+
+// modelJSONKeys returns the set of top-level JSON field names of a struct type.
+// It intentionally only handles explicitly tagged struct fields — the swagger-generated
+// models it is used with tag every field; extend it if that ever stops holding.
+func modelJSONKeys(t reflect.Type) map[string]struct{} {
+	keys := make(map[string]struct{}, t.NumField())
+
+	for i := 0; i < t.NumField(); i++ {
+		name, _, _ := strings.Cut(t.Field(i).Tag.Get("json"), ",")
+		if name == "" || name == "-" {
+			continue
+		}
+
+		keys[name] = struct{}{}
+	}
+
+	return keys
+}
+
+func FilterPatch(patch models.Rfc7396PatchOperation, filters []string, rootKeys map[string]struct{}) (models.Rfc7396PatchOperation, error) {
 	if len(filters) == 0 {
 		return patch, nil
 	}
@@ -81,6 +117,16 @@ func FilterPatch(patch models.Rfc7396PatchOperation, filters []string) (models.R
 	var newPatch = models.Rfc7396PatchOperation{}
 
 	for _, filter := range filters {
+		if filter == RootFilter {
+			for k := range rootKeys {
+				if v, ok := patch[k]; ok {
+					newPatch[k] = v
+				}
+			}
+
+			continue
+		}
+
 		if mapped, ok := staticFilterMappings[filter]; ok {
 			filter = mapped
 		}

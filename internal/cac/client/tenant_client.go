@@ -41,7 +41,7 @@ func (t *TenantClient) Read(ctx context.Context, opts ...api.SourceOpt) (models.
 		return nil, err
 	}
 
-	if data, err = utils.FilterPatch(data, options.Filters); err != nil {
+	if data, err = utils.FilterPatch(data, options.Filters, utils.TenantRootKeys); err != nil {
 		return nil, err
 	}
 

@@ -329,7 +329,7 @@ updated_at: 0001-01-01T00:00:00.000Z
             require.NoError(t, err)
 
             // verifying if the data read from fs is the same as the provided test data
-            patchData, err = utils.FilterPatch(patchData, tc.filters)
+            patchData, err = utils.FilterPatch(patchData, tc.filters, utils.TenantRootKeys)
             require.NoError(t, err)
 
             d, err := diff.Tree(patchData, readServer)

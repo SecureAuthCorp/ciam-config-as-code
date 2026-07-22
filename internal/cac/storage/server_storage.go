@@ -257,7 +257,7 @@ func (s *ServerStorage) Read(ctx context.Context, opts ...api.SourceOpt) (models
 		return nil, err
 	}
 
-	if server, err = utils.FilterPatch(server, options.Filters); err != nil {
+	if server, err = utils.FilterPatch(server, options.Filters, utils.ServerRootKeys); err != nil {
 		return nil, err
 	}
 

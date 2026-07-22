@@ -13,6 +13,7 @@ func TestFilterPatch(t *testing.T) {
 		name     string
 		server   models.Rfc7396PatchOperation
 		filters  []string
+		rootKeys map[string]struct{}
 		expected models.Rfc7396PatchOperation
 	}{
 		{
@@ -29,7 +30,8 @@ func TestFilterPatch(t *testing.T) {
 					},
 				},
 			},
-			filters: []string{"clients"},
+			filters:  []string{"clients"},
+			rootKeys: utils.ServerRootKeys,
 			expected: models.Rfc7396PatchOperation{
 				"clients": models.TreeClients{
 					"123": models.TreeClient{
@@ -55,7 +57,8 @@ func TestFilterPatch(t *testing.T) {
 					Type: "asd",
 				},
 			},
-			filters: []string{"scopes", "ciba"},
+			filters:  []string{"scopes", "ciba"},
+			rootKeys: utils.ServerRootKeys,
 			expected: models.Rfc7396PatchOperation{
 				"scopes_without_service": models.TreeScopes{
 					"456": models.TreeScope{
@@ -67,11 +70,82 @@ func TestFilterPatch(t *testing.T) {
 				},
 			},
 		},
+		{
+			name: "root only keeps root-level workspace config and drops collections",
+			server: models.Rfc7396PatchOperation{
+				"name":                        "workspace1",
+				"grant_types":                 []string{"authorization_code"},
+				"token_endpoint_auth_methods": []string{"client_secret_basic"},
+				"clients": models.TreeClients{
+					"123": models.TreeClient{ClientName: "client1"},
+				},
+				"scopes_without_service": models.TreeScopes{
+					"456": models.TreeScope{Description: "some scope"},
+				},
+			},
+			filters:  []string{utils.RootFilter},
+			rootKeys: utils.ServerRootKeys,
+			expected: models.Rfc7396PatchOperation{
+				"name":                        "workspace1",
+				"grant_types":                 []string{"authorization_code"},
+				"token_endpoint_auth_methods": []string{"client_secret_basic"},
+			},
+		},
+		{
+			name: "root combined with a collection keeps both",
+			server: models.Rfc7396PatchOperation{
+				"name": "workspace1",
+				"clients": models.TreeClients{
+					"123": models.TreeClient{ClientName: "client1"},
+				},
+				"idps": models.TreeIDPs{
+					"456": models.TreeIDP{Name: "idp1"},
+				},
+			},
+			filters:  []string{utils.RootFilter, "clients"},
+			rootKeys: utils.ServerRootKeys,
+			expected: models.Rfc7396PatchOperation{
+				"name": "workspace1",
+				"clients": models.TreeClients{
+					"123": models.TreeClient{ClientName: "client1"},
+				},
+			},
+		},
+		{
+			name: "root only keeps root-level tenant config and drops collections",
+			server: models.Rfc7396PatchOperation{
+				"name":     "tenant1",
+				"settings": map[string]any{"key": "value"},
+				"pools": models.TreePools{
+					"123": models.TreePool{Name: "pool1"},
+				},
+				"schemas": models.TreeSchemas{
+					"456": models.TreeSchema{Name: "schema1"},
+				},
+			},
+			filters:  []string{utils.RootFilter},
+			rootKeys: utils.TenantRootKeys,
+			expected: models.Rfc7396PatchOperation{
+				"name":     "tenant1",
+				"settings": map[string]any{"key": "value"},
+			},
+		},
+		{
+			name: "root only on a patch of collections yields empty result",
+			server: models.Rfc7396PatchOperation{
+				"clients": models.TreeClients{
+					"123": models.TreeClient{ClientName: "client1"},
+				},
+			},
+			filters:  []string{utils.RootFilter},
+			rootKeys: utils.ServerRootKeys,
+			expected: models.Rfc7396PatchOperation{},
+		},
 	}
 
 	for _, tc := range tcs {
 		t.Run(tc.name, func(t *testing.T) {
-			actual, err := utils.FilterPatch(tc.server, tc.filters)
+			actual, err := utils.FilterPatch(tc.server, tc.filters, tc.rootKeys)
 
 			require.NoError(t, err)
 
