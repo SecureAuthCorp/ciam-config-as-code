@@ -1,0 +1,16 @@
+# Default client and profile client credentials are intentionally NOT set here.
+# They are meant to be provided via environment variables (secrets should not
+# live in committed config). The profile only declares non-secret settings.
+logging:
+  level: info
+  format: text
+storage:
+  dir_path: "/tmp/default-data"
+
+profiles:
+  stage:
+    storage:
+      dir_path: "/tmp/stage-data"
+  # a profile that declares nothing of its own, so client and storage both fall
+  # back to (independent copies of) the default config
+  bare: {}
