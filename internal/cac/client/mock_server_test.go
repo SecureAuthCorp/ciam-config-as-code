@@ -80,6 +80,35 @@ func CreateMockServer(t *testing.T) *httptest.Server {
 		return
 	}
 
+	if req.URL.Path == "/api/system/postmance/servers/demo/secrets" && req.Method == http.MethodGet {
+		res.Header().Set("Content-Type", "application/json")
+		res.WriteHeader(http.StatusOK)
+		_, err := res.Write([]byte(`{"secrets":[{"id":"existing","secret":"","server_id":"demo","tenant_id":"postmance"},{"id":"gone","secret":"","server_id":"demo","tenant_id":"postmance"}]}`))
+		require.NoError(t, err)
+		return
+	}
+
+	if req.URL.Path == "/api/system/postmance/servers/demo/secrets" && req.Method == http.MethodPost {
+		res.Header().Set("Content-Type", "application/json")
+		res.WriteHeader(http.StatusCreated)
+		_, err := res.Write([]byte(`{"id":"new","secret":"","server_id":"demo","tenant_id":"postmance"}`))
+		require.NoError(t, err)
+		return
+	}
+
+	if req.URL.Path == "/api/system/postmance/servers/demo/secrets/existing" && req.Method == http.MethodPut {
+		res.Header().Set("Content-Type", "application/json")
+		res.WriteHeader(http.StatusCreated)
+		_, err := res.Write([]byte(`{"id":"existing","secret":"","server_id":"demo","tenant_id":"postmance"}`))
+		require.NoError(t, err)
+		return
+	}
+
+	if req.URL.Path == "/api/system/postmance/servers/demo/secrets/gone" && req.Method == http.MethodDelete {
+		res.WriteHeader(http.StatusNoContent)
+		return
+	}
+
 	res.Header().Set("Content-Type", "application/json")
 	res.WriteHeader(http.StatusOK)
 	js, err := json.Marshal(models.TreeServer{
