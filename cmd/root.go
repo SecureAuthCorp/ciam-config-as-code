@@ -28,10 +28,11 @@ Examples:
 )
 
 type RootConfig struct {
-	ConfigPath string
-	Profile    string
-	Workspace  string
-	Tenant     bool
+	ConfigPath       string
+	Profile          string
+	Workspace        string
+	Tenant           bool
+	WorkspaceSecrets string
 }
 
 func init() {
@@ -45,13 +46,19 @@ Example: --tenant`)
 	rootCmd.PersistentFlags().StringVar(&rootConfig.Workspace, "workspace", "", `Workspace identifier to operate on.
 Mutually exclusive with --tenant.
 Example: --workspace demo`)
+	rootCmd.PersistentFlags().StringVar(&rootConfig.WorkspaceSecrets, "workspace-secrets", "", `Operate exclusively on the secrets of the given workspace (system Secrets API).
+Mutually exclusive with --workspace, --tenant, and --filter.
+Examples:
+  cac --config ./cac.yaml --profile dev pull --workspace-secrets demo
+  cac --config ./cac.yaml --profile dev push --workspace-secrets demo --prune
+  cac --config ./cac.yaml --profile dev diff --workspace-secrets demo`)
 
 	rootCmd.AddCommand(pullCmd)
 	rootCmd.AddCommand(pushCmd)
 	rootCmd.AddCommand(diffCmd)
 
-	rootCmd.MarkFlagsMutuallyExclusive("workspace", "tenant")
-	rootCmd.MarkFlagsOneRequired("workspace", "tenant")
+	rootCmd.MarkFlagsMutuallyExclusive("workspace", "tenant", "workspace-secrets")
+	rootCmd.MarkFlagsOneRequired("workspace", "tenant", "workspace-secrets")
 }
 
 func Execute() error {

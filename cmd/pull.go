@@ -4,6 +4,8 @@ import (
 	"github.com/cloudentity/acp-client-go/clients/hub/models"
 	"github.com/cloudentity/cac/internal/cac"
 	"github.com/cloudentity/cac/internal/cac/api"
+	"github.com/cloudentity/cac/internal/cac/secrets"
+	"github.com/pkg/errors"
 	"github.com/spf13/cobra"
 	"golang.org/x/exp/slog"
 )
@@ -33,6 +35,10 @@ Examples:
 				data models.Rfc7396PatchOperation
 				err  error
 			)
+
+			if rootConfig.WorkspaceSecrets != "" {
+				return pullSecrets(cmd)
+			}
 
 			if app, err = cac.InitApp(rootConfig.ConfigPath, rootConfig.Profile, rootConfig.Tenant); err != nil {
 				return err
@@ -66,6 +72,52 @@ Examples:
 		Filters     []string
 	}
 )
+
+func pullSecrets(cmd *cobra.Command) error {
+	var (
+		app *cac.Application
+		err error
+	)
+
+	if len(pullConfig.Filters) > 0 {
+		return errors.New("--filter cannot be combined with --workspace-secrets")
+	}
+
+	if app, err = cac.InitApp(rootConfig.ConfigPath, rootConfig.Profile, false); err != nil {
+		return err
+	}
+
+	dirStore, err := secretsDirStore(app)
+	if err != nil {
+		return err
+	}
+
+	wid := rootConfig.WorkspaceSecrets
+
+	slog.With("workspace", wid).Info("Pulling secrets")
+
+	ids, err := app.Secrets.ListIDs(cmd.Context(), wid)
+	if err != nil {
+		return err
+	}
+
+	created, skipped, err := dirStore.WriteStubs(wid, ids)
+	if err != nil {
+		return err
+	}
+
+	slog.Info("Pulled secrets", "workspace", wid, "created", len(created), "skipped_existing", len(skipped))
+
+	return nil
+}
+
+func secretsDirStore(app *cac.Application) (*secrets.DirStore, error) {
+	if app.Config.Storage == nil || len(app.Config.Storage.DirPath) == 0 {
+		return nil, errors.New("no storage directories configured for the selected profile")
+	}
+
+	return secrets.NewDirStore(app.Config.Storage.DirPath), nil
+}
 
 func init() {
 	pullCmd.PersistentFlags().BoolVar(&pullConfig.WithSecrets, "with-secrets", false, `Include secret fields (client secrets, signing keys, etc.) in the pulled configuration.
