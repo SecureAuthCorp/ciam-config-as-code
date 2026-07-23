@@ -1,9 +1,12 @@
 package cmd
 
 import (
+	"os"
+
 	"github.com/cloudentity/acp-client-go/clients/hub/models"
 	"github.com/cloudentity/cac/internal/cac"
 	"github.com/cloudentity/cac/internal/cac/api"
+	"github.com/cloudentity/cac/internal/cac/secrets"
 	"github.com/cloudentity/cac/internal/cac/storage"
 	"github.com/pkg/errors"
 	"github.com/spf13/cobra"
@@ -41,6 +44,14 @@ Examples:
 				data models.Rfc7396PatchOperation
 				err  error
 			)
+
+			if rootConfig.WorkspaceSecrets != "" {
+				return pushSecrets(cmd)
+			}
+
+			if pushConfig.Method == "" {
+				return errors.New(`required flag(s) "method" not set`)
+			}
 
 			if app, err = cac.InitApp(rootConfig.ConfigPath, rootConfig.Profile, rootConfig.Tenant); err != nil {
 				return err
@@ -99,14 +110,75 @@ Examples:
 		},
 	}
 	pushConfig struct {
-		DryRun     bool
-		Out        string
-		Mode       string
-		Method     string
-		Filters    []string
+		DryRun          bool
+		Out             string
+		Mode            string
+		Method          string
+		Filters         []string
 		NoLocalValidate bool
+		Prune           bool
 	}
 )
+
+func pushSecrets(cmd *cobra.Command) error {
+	var (
+		app *cac.Application
+		err error
+	)
+
+	if len(pushConfig.Filters) > 0 {
+		return errors.New("--filter cannot be combined with --workspace-secrets")
+	}
+
+	if pushConfig.Method != "" {
+		return errors.New("--method does not apply to --workspace-secrets; secrets are always reconciled (create/update, delete with --prune)")
+	}
+
+	if app, err = cac.InitApp(rootConfig.ConfigPath, rootConfig.Profile, false); err != nil {
+		return err
+	}
+
+	dirStore, err := secretsDirStore(app)
+	if err != nil {
+		return err
+	}
+
+	wid := rootConfig.WorkspaceSecrets
+
+	local, err := dirStore.List(wid)
+	if err != nil {
+		return errors.Wrap(err, "failed to read local secrets")
+	}
+
+	remoteIDs, err := app.Secrets.ListIDs(cmd.Context(), wid)
+	if err != nil {
+		return err
+	}
+
+	plan := secrets.ComputePlan(local, remoteIDs, pushConfig.Prune)
+
+	if plan.Empty() {
+		slog.Info("No secret changes to push", "workspace", wid)
+		return nil
+	}
+
+	if pushConfig.DryRun {
+		if _, err = os.Stdout.WriteString(plan.Summary()); err != nil {
+			return errors.Wrap(err, "failed to write plan to stdout")
+		}
+
+		return nil
+	}
+
+	if err = app.Secrets.Apply(cmd.Context(), wid, plan); err != nil {
+		return err
+	}
+
+	slog.Info("Pushed secrets", "workspace", wid,
+		"created", len(plan.Create), "updated", len(plan.Update), "deleted", len(plan.Delete))
+
+	return nil
+}
 
 func init() {
 	pushCmd.PersistentFlags().BoolVar(&pushConfig.DryRun, "dry-run", false, `Write the resolved configuration to disk or stdout instead of pushing to the server.
@@ -132,6 +204,8 @@ Example: --method patch`)
 	pushCmd.PersistentFlags().BoolVar(&pushConfig.NoLocalValidate, "no-validate", false, `Skip client-side validation before pushing.
 Workaround for cases where local validation rejects a configuration the server accepts.
 Example: --no-validate`)
+	pushCmd.PersistentFlags().BoolVar(&pushConfig.Prune, "prune", false, `Secrets mode only: delete remote secrets that have no local definition.
+Example: cac push --workspace-secrets demo --prune`)
 	pushCmd.PersistentFlags().StringSliceVar(&pushConfig.Filters, "filter", []string{}, `Restrict the push to selected top-level resources (comma-separated or repeated).
 Workspace resources: clients, idps, claims, custom_apps, gateways, policies, policy_execution_points,
                      pools, scopes (alias of scopes_without_service), scripts, script_execution_points,
@@ -145,6 +219,4 @@ Examples:
   --filter scopes --filter pools
   --filter root
   --filter root,clients`)
-
-	mustMarkRequired(pushCmd, "method")
 }
