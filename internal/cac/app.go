@@ -124,7 +124,7 @@ func (a *Application) PickSource(source string, tenant bool) (api.Source, error)
 			c   *client.Client
 			err error
 		)
-		
+
 		ms, err := storage.InitMultiStorage(conf.Storage, constructor)
 
 		if err != nil {
