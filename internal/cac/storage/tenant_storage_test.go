@@ -402,6 +402,8 @@ func TestTenantStoragePhoneProviderConfigRoundTrip(t *testing.T) {
     require.NotNil(t, back.PhoneProviderConfig, "phone_provider_config did not survive the round trip")
     require.Equal(t, "custom", back.PhoneProviderConfig.Mode)
     require.Len(t, back.PhoneProviderConfig.Providers, 1)
+    require.NotNil(t, back.PhoneProviderConfig.Providers[0])
+    require.NotNil(t, back.PhoneProviderConfig.Providers[0].Twilio)
     require.Equal(t, "ACtest", back.PhoneProviderConfig.Providers[0].Twilio.Sid)
     require.Equal(t, "tok", back.PhoneProviderConfig.Providers[0].Twilio.AuthToken)
 }
