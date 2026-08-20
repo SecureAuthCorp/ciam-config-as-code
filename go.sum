@@ -7,8 +7,8 @@ github.com/Masterminds/sprig/v3 v3.2.3 h1:eL2fZNezLomi0uOLqjQoN6BfsDD+fyLtgbJMAj
 github.com/Masterminds/sprig/v3 v3.2.3/go.mod h1:rXcFaZ2zZbLRJv/xSysmlgIM1u11eBaRMhvYXJNkGuM=
 github.com/asaskevich/govalidator v0.0.0-20230301143203-a9d515a09cc2 h1:DklsrG3dyBCFEj5IhUbnKptjxatkF07cF2ak3yi77so=
 github.com/asaskevich/govalidator v0.0.0-20230301143203-a9d515a09cc2/go.mod h1:WaHUgvxTVq04UNunO+XhnAqY/wQc+bxr74GqbsZ/Jqw=
-github.com/cloudentity/acp-client-go v0.0.0-20260527095100-008ff5049411 h1:oty7npFWtmLAegF5gYXQAAsY2DOZ7WxcCZVVqBSeIwE=
-github.com/cloudentity/acp-client-go v0.0.0-20260527095100-008ff5049411/go.mod h1:Hr2WHHXmp+DC4B2oprhgP47yl/dsCAyj9HcG6P3z4m0=
+github.com/cloudentity/acp-client-go v0.0.0-20260820095634-1f1938087bcf h1:Ir4JoN0wkeZYQgiM4il5Jrg/WJSIGLgjBeEtE7my4zY=
+github.com/cloudentity/acp-client-go v0.0.0-20260820095634-1f1938087bcf/go.mod h1:Hr2WHHXmp+DC4B2oprhgP47yl/dsCAyj9HcG6P3z4m0=
 github.com/corvus-ch/zbase32 v1.0.0 h1:pDV0qZ1g+HYA8P0PbULsgUg/tZue1FIjsZ7r7h4nZeU=
 github.com/corvus-ch/zbase32 v1.0.0/go.mod h1:A7KLRecF1tysURyoqiJBvMJFmt/ccqkRdDTLjlQeVsU=
 github.com/cpuguy83/go-md2man/v2 v2.0.3/go.mod h1:tgQtvFlXSQOSOSIRvRPT7W67SCa46tRHOmNcaadrF8o=

@@ -200,9 +200,18 @@ func (t *TenantStorage) Read(ctx context.Context, opts ...api.SourceOpt) (models
 
 var _ Storage = &TenantStorage{}
 
+// tenantFile is what lands in tenant.yaml. smodels.Tenant is reused to strip the
+// collections stored in their own files, but it predates phone_provider_config and
+// would otherwise discard it.
+type tenantFile struct {
+    smodels.Tenant
+
+    PhoneProviderConfig *models.TreePhoneProviderConfig `json:"phone_provider_config,omitempty"`
+}
+
 func (t *TenantStorage) storeTenant(path string, data *models.TreeTenant) error {
     var (
-        tenant smodels.Tenant
+        tenant tenantFile
         bts    []byte
         err    error
     )

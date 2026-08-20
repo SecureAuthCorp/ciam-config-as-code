@@ -176,6 +176,7 @@ public_registration_allowed: false
 second_factor_threshold: 0
 system: false
 webauthn_settings:
+  require_user_interaction_before_prompt: false
   rp_id: example.com
   rp_origins:
     - https://www.sit2.example.com`, string(bts))
@@ -217,6 +218,36 @@ settings:
   message_redaction:
     address: obfuscate
     content: retain`, string(bts))
+                }
+            },
+        },
+        {
+            desc: "phone provider config",
+            data: &models.TreeTenant{
+                Name: "Default",
+                PhoneProviderConfig: &models.TreePhoneProviderConfig{
+                    Mode: "custom",
+                    Providers: []*models.PhoneProvider{
+                        {Twilio: &models.TwilioPhoneProvider{
+                            Sid: "ACtest", AuthToken: "tok", From: "SecureAuth",
+                        }},
+                    },
+                },
+            },
+            files: []string{"tenant.yaml"},
+            assert: func(t *testing.T, path string, bts []byte) {
+                switch path {
+                case "tenant.yaml":
+                    require.YAMLEq(t, `name: Default
+phone_provider_config:
+  active: false
+  mode: custom
+  providers:
+  - twilio:
+      sid: ACtest
+      auth_token: tok
+      from: SecureAuth
+      disable_delivery_callback_url: false`, string(bts))
                 }
             },
         },
@@ -337,4 +368,40 @@ updated_at: 0001-01-01T00:00:00.000Z
             require.Empty(t, d)
         })
     }
+}
+
+func TestTenantStoragePhoneProviderConfigRoundTrip(t *testing.T) {
+    require.NoError(t, logging.InitLogging(&logging.Configuration{Level: "debug"}))
+
+    st, err := storage.InitMultiStorage(&storage.MultiStorageConfiguration{
+        DirPath: []string{t.TempDir()},
+    }, storage.InitTenantStorage)
+    require.NoError(t, err)
+
+    tree := &models.TreeTenant{
+        Name: "Default",
+        PhoneProviderConfig: &models.TreePhoneProviderConfig{
+            Mode: "custom",
+            Providers: []*models.PhoneProvider{
+                {Twilio: &models.TwilioPhoneProvider{Sid: "ACtest", AuthToken: "tok", From: "SecureAuth"}},
+            },
+        },
+    }
+
+    written, err := utils.FromModelToPatch(tree)
+    require.NoError(t, err)
+
+    require.NoError(t, st.Write(context.Background(), written, api.WithWorkspace("demo")))
+
+    read, err := st.Read(context.Background(), api.WithWorkspace("demo"))
+    require.NoError(t, err)
+
+    back, err := utils.FromPatchToModel[models.TreeTenant](read)
+    require.NoError(t, err)
+
+    require.NotNil(t, back.PhoneProviderConfig, "phone_provider_config did not survive the round trip")
+    require.Equal(t, "custom", back.PhoneProviderConfig.Mode)
+    require.Len(t, back.PhoneProviderConfig.Providers, 1)
+    require.Equal(t, "ACtest", back.PhoneProviderConfig.Providers[0].Twilio.Sid)
+    require.Equal(t, "tok", back.PhoneProviderConfig.Providers[0].Twilio.AuthToken)
 }
