@@ -234,20 +234,20 @@ settings:
                     },
                 },
             },
-            files: []string{"tenant.yaml"},
+            files: []string{"tenant.yaml", "phone_provider_config.yaml"},
             assert: func(t *testing.T, path string, bts []byte) {
                 switch path {
                 case "tenant.yaml":
-                    require.YAMLEq(t, `name: Default
-phone_provider_config:
-  active: false
-  mode: custom
-  providers:
-  - twilio:
-      sid: ACtest
-      auth_token: tok
-      from: SecureAuth
-      disable_delivery_callback_url: false`, string(bts))
+                    require.YAMLEq(t, `name: Default`, string(bts))
+                case "phone_provider_config.yaml":
+                    require.YAMLEq(t, `active: false
+mode: custom
+providers:
+- twilio:
+    sid: ACtest
+    auth_token: tok
+    from: SecureAuth
+    disable_delivery_callback_url: false`, string(bts))
                 }
             },
         },

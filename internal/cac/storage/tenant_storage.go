@@ -37,6 +37,10 @@ func (t *TenantStorage) Write(ctx context.Context, data models.Rfc7396PatchOpera
         return err
     }
 
+    if err = writeFile(model.PhoneProviderConfig, filepath.Join(path, "phone_provider_config")); err != nil {
+        return err
+    }
+
     if err = writeFiles(model.Pools,
         filepath.Join(path, "pools"),
         func(id string, it models.TreePool) string { return it.Name }); err != nil {
@@ -106,6 +110,10 @@ func (t *TenantStorage) Read(ctx context.Context, opts ...api.SourceOpt) (models
     }
 
     if tenant, err = readFile(filepath.Join(path, "tenant")); err != nil {
+        return nil, err
+    }
+
+    if err = readFileToMap(tenant, "phone_provider_config", filepath.Join(path, "phone_provider_config")); err != nil {
         return nil, err
     }
 
@@ -200,18 +208,9 @@ func (t *TenantStorage) Read(ctx context.Context, opts ...api.SourceOpt) (models
 
 var _ Storage = &TenantStorage{}
 
-// tenantFile is what lands in tenant.yaml. smodels.Tenant is reused to strip the
-// collections stored in their own files, but it predates phone_provider_config and
-// would otherwise discard it.
-type tenantFile struct {
-    smodels.Tenant
-
-    PhoneProviderConfig *models.TreePhoneProviderConfig `json:"phone_provider_config,omitempty"`
-}
-
 func (t *TenantStorage) storeTenant(path string, data *models.TreeTenant) error {
     var (
-        tenant tenantFile
+        tenant smodels.Tenant
         bts    []byte
         err    error
     )
