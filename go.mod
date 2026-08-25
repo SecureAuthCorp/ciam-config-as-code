@@ -4,7 +4,7 @@ go 1.24.0
 
 require (
 	github.com/Masterminds/sprig/v3 v3.2.3
-	github.com/cloudentity/acp-client-go v0.0.0-20260820095634-1f1938087bcf
+	github.com/cloudentity/acp-client-go v0.0.0-20260825070526-1de34904f06f
 	github.com/corvus-ch/zbase32 v1.0.0
 	github.com/go-json-experiment/json v0.0.0-20240524174822-2d9f40f7385b
 	github.com/go-openapi/strfmt v0.24.0
