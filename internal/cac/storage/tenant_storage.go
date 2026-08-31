@@ -37,6 +37,10 @@ func (t *TenantStorage) Write(ctx context.Context, data models.Rfc7396PatchOpera
         return err
     }
 
+    if err = writeFile(model.PhoneProviderConfig, filepath.Join(path, "phone_provider_config")); err != nil {
+        return err
+    }
+
     if err = writeFiles(model.Pools,
         filepath.Join(path, "pools"),
         func(id string, it models.TreePool) string { return it.Name }); err != nil {
@@ -106,6 +110,10 @@ func (t *TenantStorage) Read(ctx context.Context, opts ...api.SourceOpt) (models
     }
 
     if tenant, err = readFile(filepath.Join(path, "tenant")); err != nil {
+        return nil, err
+    }
+
+    if err = readFileToMap(tenant, "phone_provider_config", filepath.Join(path, "phone_provider_config")); err != nil {
         return nil, err
     }
 

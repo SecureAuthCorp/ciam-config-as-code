@@ -98,6 +98,7 @@ client_secret_expires_at: 0
 created_at: 0001-01-01T00:00:00.000Z
 dpop_bound_access_tokens: false
 dynamically_registered: false
+enforce_application_membership: false
 grant_types: []
 hashed_rotated_secrets: []
 id: demo-demo
@@ -111,6 +112,7 @@ saml_idp_override_enabled: false
 saml_metadata_updated_at: 0001-01-01T00:00:00.000Z
 saml_override_attributes: false
 scopes: []
+skip_dbfp: false
 system: false
 tls_client_certificate_bound_access_tokens: false
 trusted: false
