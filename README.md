@@ -239,6 +239,41 @@ map[string]any{
 - 	"ciba_authentication_service":               map[string]any{"type": string("mock")},
 ```
 
+### Managing secrets
+
+Workspace secrets live behind a dedicated system API and are managed with the
+secrets-exclusive `--workspace-secrets <workspace>` flag (mutually exclusive with
+`--workspace`, `--tenant`, and `--filter`). Secret *values* are never stored in
+the repository and never returned by the server — each secret file references an
+environment variable that is resolved at push time:
+
+```yaml
+# workspaces/demo/secrets/smtp_password.yaml
+id: smtp_password
+value: '{{ env "CAC_SECRET_SMTP_PASSWORD" }}'
+```
+
+```bash
+# create stub files for remote secrets that have no local definition
+cac --config ./cac.yaml --profile dev pull --workspace-secrets demo
+
+# preview what a push would change (secret ids only, never values)
+cac --config ./cac.yaml --profile dev push --workspace-secrets demo --dry-run
+
+# create + update remote secrets from local definitions
+CAC_SECRET_SMTP_PASSWORD=... cac --config ./cac.yaml --profile dev push --workspace-secrets demo
+
+# also delete remote secrets that have no local definition
+cac --config ./cac.yaml --profile dev push --workspace-secrets demo --prune
+
+# compare local definitions against the remote workspace
+cac --config ./cac.yaml --profile dev diff --workspace-secrets demo
+```
+
+> **Note:** `pull --workspace-secrets` never overwrites existing secret files, and
+> a push fails before any API call if a referenced environment variable is unset
+> or a secret resolves to an empty value.
+
 ## Templates
 
 Templates are used to generate configuration files. They are using [Go template language](https://golang.org/pkg/text/template/).

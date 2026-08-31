@@ -17,6 +17,7 @@ type Application struct {
 	Client     api.Source
 	Storage    storage.Storage
 	Validator  data.ValidatorApi
+	Secrets    *client.SecretsAPIStore
 }
 
 func InitApp(configPath string, profile string, tenant bool) (app *Application, err error) {
@@ -43,6 +44,7 @@ func InitApp(configPath string, profile string, tenant bool) (app *Application, 
 		}
 
 		app.Client = c
+		app.Secrets = c.SecretsStore()
 
 		if tenant {
 			app.Client = c.Tenant()
@@ -122,7 +124,7 @@ func (a *Application) PickSource(source string, tenant bool) (api.Source, error)
 			c   *client.Client
 			err error
 		)
-		
+
 		ms, err := storage.InitMultiStorage(conf.Storage, constructor)
 
 		if err != nil {

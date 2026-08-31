@@ -1,13 +1,16 @@
 package cmd
 
 import (
+	"fmt"
+	"os"
+	"strings"
+
 	"github.com/cloudentity/cac/internal/cac"
 	"github.com/cloudentity/cac/internal/cac/api"
 	"github.com/cloudentity/cac/internal/cac/diff"
 	"github.com/pkg/errors"
 	"github.com/spf13/cobra"
 	"golang.org/x/exp/slog"
-	"os"
 )
 
 var (
@@ -46,6 +49,14 @@ Examples:
 				target api.Source
 				err    error
 			)
+
+			if rootConfig.WorkspaceSecrets != "" {
+				return diffSecrets(cmd)
+			}
+
+			if diffConfig.Source == "" || diffConfig.Target == "" {
+				return errors.New(`required flag(s) "source", "target" not set`)
+			}
 
 			slog.
 				With("workspace", rootConfig.Workspace).
@@ -110,6 +121,95 @@ Examples:
 	}
 )
 
+func diffSecrets(cmd *cobra.Command) error {
+	var (
+		app *cac.Application
+		err error
+	)
+
+	if len(diffConfig.Filters) > 0 {
+		return errors.New("--filter cannot be combined with --workspace-secrets")
+	}
+
+	if diffConfig.Source != "" || diffConfig.Target != "" {
+		return errors.New("--source/--target do not apply to --workspace-secrets; local files are always compared against the remote workspace")
+	}
+
+	if app, err = cac.InitApp(rootConfig.ConfigPath, rootConfig.Profile, false); err != nil {
+		return err
+	}
+
+	dirStore, err := secretsDirStore(app)
+	if err != nil {
+		return err
+	}
+
+	wid := rootConfig.WorkspaceSecrets
+
+	localIDs, err := dirStore.ListIDs(wid)
+	if err != nil {
+		return errors.Wrap(err, "failed to read local secrets")
+	}
+
+	remoteIDs, err := app.Secrets.ListIDs(cmd.Context(), wid)
+	if err != nil {
+		return err
+	}
+
+	result := secretsDiffReport(wid, localIDs, remoteIDs)
+
+	if diffConfig.Out != "-" {
+		return os.WriteFile(diffConfig.Out, []byte(result), 0644)
+	}
+
+	_, err = os.Stdout.WriteString(result)
+
+	return err
+}
+
+func secretsDiffReport(wid string, localIDs []string, remoteIDs []string) string {
+	var (
+		b      strings.Builder
+		remote = map[string]bool{}
+		local  = map[string]bool{}
+
+		onlyLocal, onlyRemote, both []string
+	)
+
+	for _, id := range remoteIDs {
+		remote[id] = true
+	}
+	for _, id := range localIDs {
+		local[id] = true
+
+		if remote[id] {
+			both = append(both, id)
+		} else {
+			onlyLocal = append(onlyLocal, id)
+		}
+	}
+	for _, id := range remoteIDs {
+		if !local[id] {
+			onlyRemote = append(onlyRemote, id)
+		}
+	}
+
+	fmt.Fprintf(&b, "secrets diff for workspace %s\n", wid)
+
+	section := func(title string, ids []string) {
+		fmt.Fprintf(&b, "%s:\n", title)
+		for _, id := range ids {
+			fmt.Fprintf(&b, "  - %s\n", id)
+		}
+	}
+
+	section("only local (would create on push)", onlyLocal)
+	section("only remote (deleted on push --prune)", onlyRemote)
+	section("in both (values not comparable)", both)
+
+	return b.String()
+}
+
 func init() {
 	diffCmd.PersistentFlags().StringVar(&diffConfig.Source, "source", "", `Source of the comparison (required). Format: [profile@]source-type
 Source types: local, remote, merged
@@ -148,6 +248,4 @@ Examples:
 Example: --with-secrets`)
 	diffCmd.PersistentFlags().BoolVar(&diffConfig.FilterVolatile, "no-volatile", false, `Ignore volatile fields (e.g. timestamps, generated IDs) when comparing.
 Example: --no-volatile`)
-
-	mustMarkRequired(diffCmd, "source", "target")
 }
