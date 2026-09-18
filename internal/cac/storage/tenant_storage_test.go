@@ -5,12 +5,14 @@ import (
     "github.com/cloudentity/acp-client-go/clients/hub/models"
     "github.com/cloudentity/cac/internal/cac/api"
     "github.com/cloudentity/cac/internal/cac/diff"
+    "github.com/cloudentity/cac/internal/cac/keyrotation"
     "github.com/cloudentity/cac/internal/cac/logging"
     "github.com/cloudentity/cac/internal/cac/storage"
     "github.com/cloudentity/cac/internal/cac/utils"
     "github.com/go-openapi/strfmt"
     "github.com/stretchr/testify/require"
     "io/fs"
+    "maps"
     "os"
     "path/filepath"
     "testing"
@@ -19,11 +21,14 @@ import (
 
 func TestTenantStorage(t *testing.T) {
     tcs := []struct {
-        desc    string
-        data    *models.TreeTenant
-        files   []string
-        filters []string
-        assert  func(t *testing.T, path string, bts []byte)
+        desc string
+        data *models.TreeTenant
+        // serverExtra holds, per workspace id, patch keys that are not part of
+        // models.TreeServer, such as key_rotation
+        serverExtra map[string]models.Rfc7396PatchOperation
+        files       []string
+        filters     []string
+        assert      func(t *testing.T, path string, bts []byte)
     }{
         {
             desc: "workspace and mfa_methods",
@@ -297,6 +302,47 @@ updated_at: 0001-01-01T00:00:00.000Z
                 }
             },
         },
+        {
+            desc: "key rotation for one of the workspaces",
+            data: &models.TreeTenant{
+                Servers: models.TreeServers{
+                    "demo":  models.TreeServer{Name: "demo workspace"},
+                    "other": models.TreeServer{Name: "other workspace"},
+                },
+            },
+            serverExtra: map[string]models.Rfc7396PatchOperation{
+                "demo": {
+                    keyrotation.Key: map[string]any{
+                        "sig": map[string]any{
+                            "enabled":       true,
+                            "cron":          "0 0 1 * *",
+                            "starting_from": "2026-10-01T00:00:00.000Z",
+                        },
+                        "enc": map[string]any{
+                            "enabled": false,
+                            "cron":    "0 0 1 * *",
+                        },
+                    },
+                },
+            },
+            files: []string{
+                "workspaces/demo/server.yaml",
+                "workspaces/demo/key_rotation.yaml",
+                "workspaces/other/server.yaml",
+            },
+            assert: func(t *testing.T, path string, bts []byte) {
+                if path == "workspaces/demo/key_rotation.yaml" {
+                    require.YAMLEq(t, `sig:
+  enabled: true
+  cron: "0 0 1 * *"
+  starting_from: 2026-10-01T00:00:00.000Z
+enc:
+  enabled: false
+  cron: "0 0 1 * *"`, string(bts))
+                    require.NotContains(t, string(bts), "scheduled_at")
+                }
+            },
+        },
     }
 
     for _, tc := range tcs {
@@ -316,8 +362,14 @@ updated_at: 0001-01-01T00:00:00.000Z
             patchData, err := utils.FromModelToPatch(tc.data)
             require.NoError(t, err)
 
+            applyServerExtra(t, patchData, tc.serverExtra)
+
             err = st.Write(context.Background(), patchData, api.WithWorkspace("demo"))
             require.NoError(t, err)
+
+            // Write pops the extension keys out of the patch it is handed, so put them back
+            // before the round trip comparison below
+            applyServerExtra(t, patchData, tc.serverExtra)
 
             var files []string
 
@@ -406,4 +458,76 @@ func TestTenantStoragePhoneProviderConfigRoundTrip(t *testing.T) {
     require.NotNil(t, back.PhoneProviderConfig.Providers[0].Twilio)
     require.Equal(t, "ACtest", back.PhoneProviderConfig.Providers[0].Twilio.Sid)
     require.Equal(t, "tok", back.PhoneProviderConfig.Providers[0].Twilio.AuthToken)
+}
+
+// applyServerExtra merges per workspace patch keys that models.TreeTenant does not carry into
+// servers.<wid> of an already converted tenant patch.
+func applyServerExtra(t *testing.T, patch models.Rfc7396PatchOperation, extra map[string]models.Rfc7396PatchOperation) {
+	t.Helper()
+
+	if len(extra) == 0 {
+		return
+	}
+
+	servers, ok := patch["servers"].(map[string]any)
+	require.True(t, ok, "patch has no servers to merge into")
+
+	for wid, it := range extra {
+		server, ok := servers[wid].(map[string]any)
+		require.True(t, ok, "patch has no server %s to merge into", wid)
+
+		maps.Copy(server, it)
+	}
+}
+
+func TestTenantStorageKeyRotationRoundTrip(t *testing.T) {
+	require.NoError(t, logging.InitLogging(&logging.Configuration{Level: "debug"}))
+
+	st, err := storage.InitMultiStorage(&storage.MultiStorageConfiguration{
+		DirPath: []string{t.TempDir()},
+	}, storage.InitTenantStorage)
+	require.NoError(t, err)
+
+	written, err := utils.FromModelToPatch(&models.TreeTenant{
+		Name: "Default",
+		Servers: models.TreeServers{
+			"demo": models.TreeServer{Name: "demo workspace"},
+		},
+	})
+	require.NoError(t, err)
+
+	applyServerExtra(t, written, map[string]models.Rfc7396PatchOperation{
+		"demo": {
+			keyrotation.Key: map[string]any{
+				"sig": map[string]any{
+					"enabled":       true,
+					"cron":          "0 0 1 * *",
+					"starting_from": "2026-10-01T00:00:00.000Z",
+				},
+			},
+		},
+	})
+
+	require.NoError(t, st.Write(context.Background(), written, api.WithWorkspace("demo")))
+
+	read, err := st.Read(context.Background(), api.WithWorkspace("demo"))
+	require.NoError(t, err)
+
+	servers, ok := read["servers"].(map[string]any)
+	require.True(t, ok, "servers did not survive the round trip")
+
+	// the read path keeps every workspace as a patch of its own
+	server, ok := servers["demo"].(models.Rfc7396PatchOperation)
+	require.True(t, ok, "the demo workspace did not survive the round trip")
+
+	config, err := keyrotation.Pop(server)
+	require.NoError(t, err)
+	require.NotNil(t, config, "key_rotation did not survive the round trip")
+
+	startingFrom, err := strfmt.ParseDateTime("2026-10-01T00:00:00.000Z")
+	require.NoError(t, err)
+
+	require.Equal(t, &keyrotation.Config{
+		Sig: &keyrotation.Rotation{Enabled: true, Cron: "0 0 1 * *", StartingFrom: &startingFrom},
+	}, config)
 }

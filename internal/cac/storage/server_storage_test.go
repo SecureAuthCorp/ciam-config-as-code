@@ -3,6 +3,7 @@ package storage_test
 import (
 	"context"
 	"io/fs"
+	"maps"
 	"os"
 	"path/filepath"
 	"slices"
@@ -13,6 +14,7 @@ import (
 	"github.com/cloudentity/acp-client-go/clients/hub/models"
 	"github.com/cloudentity/cac/internal/cac/api"
 	"github.com/cloudentity/cac/internal/cac/diff"
+	"github.com/cloudentity/cac/internal/cac/keyrotation"
 	"github.com/cloudentity/cac/internal/cac/logging"
 	"github.com/cloudentity/cac/internal/cac/storage"
 	"github.com/cloudentity/cac/internal/cac/utils"
@@ -26,6 +28,8 @@ func TestStorage(t *testing.T) {
     tcs := []struct {
         desc    string
         data    *models.TreeServer
+        // extra holds patch keys that are not part of models.TreeServer, such as key_rotation
+        extra   models.Rfc7396PatchOperation
         files   []string
         filters []string
         assert  func(t *testing.T, path string, bts []byte)
@@ -607,6 +611,86 @@ system: false`, string(bts))
                 }
             },
         },
+        {
+            desc: "key rotation",
+            data: &models.TreeServer{
+                Name: "demo workspace",
+            },
+            extra: models.Rfc7396PatchOperation{
+                keyrotation.Key: map[string]any{
+                    "sig": map[string]any{
+                        "enabled":       true,
+                        "cron":          "0 0 1 * *",
+                        "starting_from": "2026-10-01T00:00:00.000Z",
+                    },
+                    "enc": map[string]any{
+                        "enabled": false,
+                        "cron":    "0 0 1 * *",
+                    },
+                },
+            },
+            files: []string{
+                "workspaces/demo/key_rotation.yaml",
+            },
+            assert: func(t *testing.T, path string, bts []byte) {
+                require.YAMLEq(t, `sig:
+  enabled: true
+  cron: "0 0 1 * *"
+  starting_from: 2026-10-01T00:00:00.000Z
+enc:
+  enabled: false
+  cron: "0 0 1 * *"`, string(bts))
+                // scheduled_at is read-only in ACP and must never be written out
+                require.NotContains(t, string(bts), "scheduled_at")
+            },
+        },
+        {
+            desc: "key rotation, sig only",
+            data: &models.TreeServer{
+                Name: "demo workspace",
+            },
+            extra: models.Rfc7396PatchOperation{
+                keyrotation.Key: map[string]any{
+                    "sig": map[string]any{
+                        "enabled": true,
+                        "cron":    "@monthly",
+                    },
+                },
+            },
+            files: []string{
+                "workspaces/demo/key_rotation.yaml",
+            },
+            assert: func(t *testing.T, path string, bts []byte) {
+                require.YAMLEq(t, `sig:
+  enabled: true
+  cron: "@monthly"`, string(bts))
+                require.NotContains(t, string(bts), "starting_from")
+                require.NotContains(t, string(bts), "enc")
+            },
+        },
+        {
+            desc: "key rotation, filtered",
+            data: &models.TreeServer{
+                Idps: models.TreeIDPs{
+                    "some-idp": models.TreeIDP{
+                        Name: "Some IDP",
+                    },
+                },
+            },
+            extra: models.Rfc7396PatchOperation{
+                keyrotation.Key: map[string]any{
+                    "sig": map[string]any{
+                        "enabled": true,
+                        "cron":    "0 0 1 * *",
+                    },
+                },
+            },
+            files: []string{
+                "workspaces/demo/idps/Some_IDP.yaml",
+                "workspaces/demo/key_rotation.yaml",
+            },
+            filters: []string{keyrotation.Key},
+        },
     }
     
     for _, tc := range tcs {
@@ -626,8 +710,14 @@ system: false`, string(bts))
             patchData, err := utils.FromModelToPatch(tc.data)
             require.NoError(t, err)
 
+            maps.Copy(patchData, tc.extra)
+
             err = st.Write(context.Background(), patchData, api.WithWorkspace("demo"))
             require.NoError(t, err)
+
+            // Write pops the extension keys out of the patch it is handed, so put them back
+            // before the round trip comparison below
+            maps.Copy(patchData, tc.extra)
 
             var files []string
 
@@ -674,9 +764,56 @@ system: false`, string(bts))
             patchData, err = utils.FilterPatch(patchData, tc.filters, utils.ServerRootKeys)
             require.NoError(t, err)
 
+            // diff ignores key_rotation.<use>.starting_from, so this round trip alone cannot catch a
+            // dropped starting_from: the YAMLEq and keyrotation.Pop based tests cover that
             d, err := diff.Tree(patchData, readServer)
             require.NoError(t, err)
             require.Empty(t, d)
         })
     }
+}
+
+func TestServerStorageKeyRotationAbsent(t *testing.T) {
+	require.NoError(t, logging.InitLogging(&logging.Configuration{Level: "debug"}))
+
+	dir := t.TempDir()
+	st := storage.InitServerStorage(&storage.Configuration{DirPath: dir})
+
+	written, err := utils.FromModelToPatch(&models.TreeServer{Name: "demo workspace"})
+	require.NoError(t, err)
+
+	require.NoError(t, st.Write(context.Background(), written, api.WithWorkspace("demo")))
+
+	_, err = os.Stat(filepath.Join(dir, "workspaces", "demo", "key_rotation.yaml"))
+	require.True(t, os.IsNotExist(err), "key_rotation.yaml must not be written when the patch has no key_rotation")
+
+	read, err := st.Read(context.Background(), api.WithWorkspace("demo"))
+	require.NoError(t, err)
+	require.NotContains(t, read, keyrotation.Key)
+}
+
+func TestServerStorageKeyRotationFilters(t *testing.T) {
+	require.NoError(t, logging.InitLogging(&logging.Configuration{Level: "debug"}))
+
+	st := storage.InitServerStorage(&storage.Configuration{DirPath: t.TempDir()})
+
+	written, err := utils.FromModelToPatch(&models.TreeServer{Name: "demo workspace"})
+	require.NoError(t, err)
+
+	rotation := map[string]any{
+		"sig": map[string]any{"enabled": true, "cron": "0 0 1 * *"},
+	}
+	written[keyrotation.Key] = rotation
+
+	require.NoError(t, st.Write(context.Background(), written, api.WithWorkspace("demo")))
+
+	read, err := st.Read(context.Background(), api.WithWorkspace("demo"), api.WithFilters([]string{keyrotation.Key}))
+	require.NoError(t, err)
+	require.Equal(t, models.Rfc7396PatchOperation{keyrotation.Key: rotation}, read)
+
+	// key_rotation lives in its own file, so it is not part of the root workspace configuration
+	read, err = st.Read(context.Background(), api.WithWorkspace("demo"), api.WithFilters([]string{utils.RootFilter}))
+	require.NoError(t, err)
+	require.NotContains(t, read, keyrotation.Key)
+	require.Equal(t, "demo workspace", read["name"])
 }

@@ -7,6 +7,7 @@ import (
 	"github.com/cloudentity/acp-client-go/clients/hub/models"
 	smodels "github.com/cloudentity/acp-client-go/clients/system/models"
 	"github.com/cloudentity/cac/internal/cac/api"
+	"github.com/cloudentity/cac/internal/cac/keyrotation"
 	"github.com/cloudentity/cac/internal/cac/utils"
 	"github.com/pkg/errors"
 	"golang.org/x/exp/maps"
@@ -40,6 +41,7 @@ func (s *ServerStorage) Write(ctx context.Context, input models.Rfc7396PatchOper
 		workspacePath string
 		workspace     string
 		data          *models.TreeServer
+		rotation      *keyrotation.Config
 		options       = &api.Options{}
 		err           error
 	)
@@ -53,6 +55,11 @@ func (s *ServerStorage) Write(ctx context.Context, input models.Rfc7396PatchOper
 	}
 
 	workspacePath = s.workspacePath(workspace)
+
+	// key_rotation is not part of the tree model, so it has to leave the patch before the strict decode
+	if rotation, err = keyrotation.Pop(input); err != nil {
+		return err
+	}
 
 	if data, err = utils.FromPatchToModel[models.TreeServer](input); err != nil {
 		return errors.Wrap(err, "failed to convert patch to tree server")
@@ -147,6 +154,10 @@ func (s *ServerStorage) Write(ctx context.Context, input models.Rfc7396PatchOper
 	}
 
 	if err = StorePolicies(data.Policies, filepath.Join(workspacePath, "policies")); err != nil {
+		return err
+	}
+
+	if err = writeFile(rotation, filepath.Join(workspacePath, keyrotation.Key)); err != nil {
 		return err
 	}
 
@@ -254,6 +265,10 @@ func (s *ServerStorage) Read(ctx context.Context, opts ...api.SourceOpt) (models
 	}
 
 	if err = readFilesToMap(server, "policies", filepath.Join(path, "policies")); err != nil {
+		return nil, err
+	}
+
+	if err = readFileToMap(server, keyrotation.Key, filepath.Join(path, keyrotation.Key)); err != nil {
 		return nil, err
 	}
 

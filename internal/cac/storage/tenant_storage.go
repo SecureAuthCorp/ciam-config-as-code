@@ -6,7 +6,9 @@ import (
     "github.com/cloudentity/acp-client-go/clients/hub/models"
     smodels "github.com/cloudentity/acp-client-go/clients/system/models"
     "github.com/cloudentity/cac/internal/cac/api"
+    "github.com/cloudentity/cac/internal/cac/keyrotation"
     "github.com/cloudentity/cac/internal/cac/utils"
+    "github.com/pkg/errors"
     "path/filepath"
 )
 
@@ -24,10 +26,16 @@ type TenantStorage struct {
 
 func (t *TenantStorage) Write(ctx context.Context, data models.Rfc7396PatchOperation, opts ...api.SourceOpt) error {
     var (
-        path  = t.Config.DirPath
-        model *models.TreeTenant
-        err   error
+        path      = t.Config.DirPath
+        model     *models.TreeTenant
+        rotations map[string]*keyrotation.Config
+        err       error
     )
+
+    // key_rotation is not part of the tree model, so it has to leave the workspaces before the strict decode
+    if rotations, err = popKeyRotations(data); err != nil {
+        return err
+    }
 
     if model, err = utils.FromPatchToModel[models.TreeTenant](data); err != nil {
         return err
@@ -85,6 +93,12 @@ func (t *TenantStorage) Write(ctx context.Context, data models.Rfc7396PatchOpera
         var serverData models.Rfc7396PatchOperation
         if serverData, err = utils.FromModelToPatch(&server); err != nil {
             return err
+        }
+
+        if rotation, ok := rotations[k]; ok {
+            if serverData[keyrotation.Key], err = utils.FromModelToPatch(rotation); err != nil {
+                return err
+            }
         }
 
         if err = t.ServerStorage.Write(ctx, serverData, opts...); err != nil {
@@ -207,6 +221,42 @@ func (t *TenantStorage) Read(ctx context.Context, opts ...api.SourceOpt) (models
 }
 
 var _ Storage = &TenantStorage{}
+
+// popKeyRotations removes key_rotation from every workspace of a tenant patch and returns the
+// configurations keyed by workspace id, so they can be handed to the server storage afterwards.
+func popKeyRotations(data models.Rfc7396PatchOperation) (map[string]*keyrotation.Config, error) {
+    var (
+        servers models.Rfc7396PatchOperation
+        out     = map[string]*keyrotation.Config{}
+        ok      bool
+    )
+
+    if servers, ok = utils.AsPatch(data["servers"]); !ok {
+        return out, nil
+    }
+
+    for wid, it := range servers {
+        var (
+            server models.Rfc7396PatchOperation
+            config *keyrotation.Config
+            err    error
+        )
+
+        if server, ok = utils.AsPatch(it); !ok {
+            continue
+        }
+
+        if config, err = keyrotation.Pop(server); err != nil {
+            return nil, errors.Wrapf(err, "workspace %s", wid)
+        }
+
+        if config != nil {
+            out[wid] = config
+        }
+    }
+
+    return out, nil
+}
 
 func (t *TenantStorage) storeTenant(path string, data *models.TreeTenant) error {
     var (
