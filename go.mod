@@ -10,6 +10,7 @@ require (
 	github.com/go-openapi/strfmt v0.24.0
 	github.com/goccy/go-yaml v1.12.0
 	github.com/google/go-cmp v0.7.0
+	github.com/gorhill/cronexpr v0.0.0-20180427100037-88b0669f7d75
 	github.com/imdario/mergo v0.3.16
 	github.com/mitchellh/mapstructure v1.5.0
 	github.com/pkg/errors v0.9.1
