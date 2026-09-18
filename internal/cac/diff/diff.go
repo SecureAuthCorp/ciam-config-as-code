@@ -66,6 +66,12 @@ var volatileFields = []string{
 	"last_active",
 }
 
+// writeOnlyFields are ignored in every diff: ACP never echoes key_rotation starting_from back, so
+// comparing it would report the local value as an addition on every single run.
+var writeOnlyFields = []string{
+	`\["key_rotation"\].*\["starting_from"\]`,
+}
+
 var fieldsFilter = func(fields []string) cmp.Option {
 	return cmp.FilterPath(func(p cmp.Path) bool {
 		for _, vf := range fields {
@@ -88,6 +94,7 @@ var fieldsFilter = func(fields []string) cmp.Option {
 
 var filerVolatileFields = fieldsFilter(volatileFields)
 var filterSecretFields = fieldsFilter(secretFields)
+var filterWriteOnlyFields = fieldsFilter(writeOnlyFields)
 
 func Diff(ctx context.Context, source api.Source, target api.Source, workspace string, opts ...Option) (string, error) {
 	var (
@@ -156,6 +163,8 @@ func Tree(source models.Rfc7396PatchOperation, target models.Rfc7396PatchOperati
 		}
 	}
 
+	diffOpts = append(diffOpts, filterWriteOnlyFields)
+
 	if options.FilterVolatile {
 		diffOpts = append(diffOpts, filerVolatileFields)
 	}
@@ -168,7 +177,7 @@ func Tree(source models.Rfc7396PatchOperation, target models.Rfc7396PatchOperati
 	diffOpts = append(diffOpts, cmpopts.SortSlices(func(a, b string) bool {
 		return a < b
 	}))
-	
+
 	out := cmp.Diff(target, source, diffOpts)
 
 	if options.Color {

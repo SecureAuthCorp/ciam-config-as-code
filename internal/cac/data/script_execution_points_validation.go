@@ -14,7 +14,7 @@ func allowToDeleteScriptExecutionPoints(ts *models.TreeServer) {
 		for scriptID, script := range typee {
 			// empty scriptID means that script is being deleted
 			if script.ScriptID == "" {
-				// scriptID is required, so we need to set it to some value to pass validation 
+				// scriptID is required, so we need to set it to some value to pass validation
 				script.ScriptID = "[DELETED]"
 				typee[scriptID] = script
 			}
