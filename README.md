@@ -239,6 +239,27 @@ map[string]any{
 - 	"ciba_authentication_service":               map[string]any{"type": string("mock")},
 ```
 
+## Key rotation
+
+Automatic key rotation is configured per workspace in `workspaces/<workspace-id>/key_rotation.yaml`:
+
+```yaml
+sig:
+  enabled: true
+  cron: "0 0 1 * *"
+  starting_from: "2026-10-01T00:00:00Z" # optional, write-only
+enc:
+  enabled: false
+  cron: "0 0 1 * *" # required even when disabled
+```
+
+- `sig` (signing keys) and `enc` (encryption keys) are both optional. A use that is absent from the file is left untouched on the server, and `pull` omits a use that SecureAuth reports as never configured.
+- `enabled` and `cron` are required for every use present in the file. SecureAuth validates the cron expression even when `enabled` is `false`, so disabling rotation still requires a valid one.
+- `cron` uses [gorhill/cronexpr](https://github.com/gorhill/cronexpr) syntax: five fields (minute, hour, day of month, month, day of week), an optional sixth field for the year, or a seven-field form with seconds first. The descriptors `@yearly`, `@annually`, `@monthly`, `@weekly`, `@daily` and `@hourly` are supported, as are `L`, `W` and `#`. `@every` is not.
+- `starting_from` is optional and write-only. SecureAuth never returns it, so `pull` never writes it and `diff` ignores it. It is honored only when it is in the future; a past value is ignored.
+- `scheduled_at` is computed by SecureAuth, is read-only, and is rejected if present in the file.
+- `--filter key_rotation` restricts a `push` or a `diff` to this file. It only applies in workspace mode: in tenant mode the whole workspace configuration, key rotation included, is selected with `--filter servers`.
+
 ## Templates
 
 Templates are used to generate configuration files. They are using [Go template language](https://golang.org/pkg/text/template/).

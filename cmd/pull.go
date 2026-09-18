@@ -73,7 +73,7 @@ Example: --with-secrets`)
 	pullCmd.PersistentFlags().StringSliceVar(&pullConfig.Filters, "filter", []string{}, `Restrict the pull to selected top-level resources (comma-separated or repeated).
 Workspace resources: clients, idps, claims, custom_apps, gateways, policies, policy_execution_points,
                      pools, scopes (alias of scopes_without_service), scripts, script_execution_points,
-                     server_consent, servers_bindings, services, theme_binding, webhooks,
+                     server_consent, servers_bindings, services, theme_binding, key_rotation, webhooks,
                      ciba (alias of ciba_authentication_service)
 Tenant resources:    pools, schemas, mfa_methods, themes, servers
 Reserved:            root (only root-level tenant/workspace config, excluding nested resources)
