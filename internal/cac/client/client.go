@@ -8,6 +8,7 @@ import (
 	"github.com/cloudentity/acp-client-go/clients/hub/client/workspace_configuration"
 	"github.com/cloudentity/acp-client-go/clients/hub/models"
 	"github.com/cloudentity/cac/internal/cac/api"
+	"github.com/cloudentity/cac/internal/cac/keyrotation"
 	"github.com/cloudentity/cac/internal/cac/utils"
 	"github.com/pkg/errors"
 	"golang.org/x/exp/slog"
@@ -79,6 +80,20 @@ func (c *Client) Read(ctx context.Context, opts ...api.SourceOpt) (models.Rfc739
 		return nil, errors.Wrap(err, "failed to convert tree server to patch")
 	}
 
+	if filterSelects(options.Filters, keyrotation.Key) {
+		var rotation *keyrotation.Config
+
+		if rotation, err = readKeyRotation(ctx, c.acp, workspace); err != nil {
+			return nil, err
+		}
+
+		if rotation != nil {
+			if data[keyrotation.Key], err = keyRotationToPatch(rotation); err != nil {
+				return nil, err
+			}
+		}
+	}
+
 	if data, err = utils.FilterPatch(data, options.Filters, utils.ServerRootKeys); err != nil {
 		return nil, errors.Wrap(err, "failed to filter patch")
 	}
@@ -89,6 +104,7 @@ func (c *Client) Read(ctx context.Context, opts ...api.SourceOpt) (models.Rfc739
 func (c *Client) Write(ctx context.Context, data models.Rfc7396PatchOperation, opts ...api.SourceOpt) error {
 	var (
 		options   = &api.Options{}
+		rotation  *keyrotation.Config
 		workspace string
 		err       error
 	)
@@ -101,12 +117,21 @@ func (c *Client) Write(ctx context.Context, data models.Rfc7396PatchOperation, o
 		return errors.New("workspace is required to write using server client")
 	}
 
-	switch options.Method {
-	case "import":
+	// Key rotation has its own endpoint and is not part of the tree models, so it leaves the patch
+	// before either method sees it.
+	if rotation, err = keyrotation.Pop(data); err != nil {
+		return err
+	}
+
+	switch {
+	case len(data) == 0:
+		// a push filtered to key rotation alone leaves the configuration api nothing to do
+		slog.Debug("No workspace configuration to push", "workspace", workspace)
+	case options.Method == "import":
 		if err = c.Import(ctx, workspace, options.Mode, data); err != nil {
 			return err
 		}
-	case "patch":
+	case options.Method == "patch":
 		if err = c.Patch(ctx, workspace, options.Mode, data); err != nil {
 			return err
 		}
@@ -114,7 +139,7 @@ func (c *Client) Write(ctx context.Context, data models.Rfc7396PatchOperation, o
 		return fmt.Errorf("unknown method: %v", options.Method)
 	}
 
-	return nil
+	return writeKeyRotation(ctx, c.acp, workspace, rotation)
 }
 
 func (c *Client) Patch(ctx context.Context, workspace string, mode string, data models.Rfc7396PatchOperation) error {

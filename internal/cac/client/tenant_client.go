@@ -3,11 +3,14 @@ package client
 import (
 	"context"
 	"fmt"
+	"maps"
+	"slices"
 
 	acpclient "github.com/cloudentity/acp-client-go"
 	"github.com/cloudentity/acp-client-go/clients/hub/client/tenant_configuration"
 	"github.com/cloudentity/acp-client-go/clients/hub/models"
 	"github.com/cloudentity/cac/internal/cac/api"
+	"github.com/cloudentity/cac/internal/cac/keyrotation"
 	"github.com/cloudentity/cac/internal/cac/utils"
 	"golang.org/x/exp/slog"
 )
@@ -41,6 +44,12 @@ func (t *TenantClient) Read(ctx context.Context, opts ...api.SourceOpt) (models.
 		return nil, err
 	}
 
+	if filterSelects(options.Filters, "servers") {
+		if err = readServersKeyRotation(ctx, t.acp, data); err != nil {
+			return nil, err
+		}
+	}
+
 	if data, err = utils.FilterPatch(data, options.Filters, utils.TenantRootKeys); err != nil {
 		return nil, err
 	}
@@ -50,25 +59,42 @@ func (t *TenantClient) Read(ctx context.Context, opts ...api.SourceOpt) (models.
 
 func (t *TenantClient) Write(ctx context.Context, data models.Rfc7396PatchOperation, opts ...api.SourceOpt) error {
 	var (
-		options = &api.Options{}
-		err     error
+		options   = &api.Options{}
+		rotations map[string]*keyrotation.Config
+		err       error
 	)
 
 	for _, opt := range opts {
 		opt(options)
 	}
 
-	switch options.Method {
-	case "import":
+	// Key rotation has its own endpoint and is not part of the tree models, so it leaves the patch
+	// before either method sees it.
+	if rotations, err = popServersKeyRotation(data); err != nil {
+		return err
+	}
+
+	switch {
+	case len(data) == 0:
+		// a push filtered to key rotation alone leaves the configuration api nothing to do
+		slog.Debug("No tenant configuration to push")
+	case options.Method == "import":
 		if err = t.Import(ctx, options.Mode, data); err != nil {
 			return err
 		}
-	case "patch":
+	case options.Method == "patch":
 		if err = t.Patch(ctx, options.Mode, data); err != nil {
 			return err
 		}
 	default:
 		return fmt.Errorf("unknown method: %v", options.Method)
+	}
+
+	// sorted so logs and errors do not depend on the map iteration order
+	for _, workspace := range slices.Sorted(maps.Keys(rotations)) {
+		if err = writeKeyRotation(ctx, t.acp, workspace, rotations[workspace]); err != nil {
+			return err
+		}
 	}
 
 	return nil
