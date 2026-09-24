@@ -1,13 +1,18 @@
 package cmd
 
 import (
+	"os"
+	"strings"
+
+	"github.com/cloudentity/acp-client-go/clients/hub/models"
 	"github.com/cloudentity/cac/internal/cac"
 	"github.com/cloudentity/cac/internal/cac/api"
 	"github.com/cloudentity/cac/internal/cac/diff"
+	"github.com/cloudentity/cac/internal/cac/keyrotation"
+	"github.com/cloudentity/cac/internal/cac/utils"
 	"github.com/pkg/errors"
 	"github.com/spf13/cobra"
 	"golang.org/x/exp/slog"
-	"os"
 )
 
 var (
@@ -47,6 +52,24 @@ Examples:
 				err    error
 			)
 
+			if rootConfig.WorkspaceKeyRotation != "" {
+				return diffKeyRotation(cmd)
+			}
+
+			var missing []string
+
+			if diffConfig.Source == "" {
+				missing = append(missing, "source")
+			}
+
+			if diffConfig.Target == "" {
+				missing = append(missing, "target")
+			}
+
+			if len(missing) > 0 {
+				return errors.Errorf(`required flag(s) "%s" not set`, strings.Join(missing, `", "`))
+			}
+
 			slog.
 				With("workspace", rootConfig.Workspace).
 				With("config", rootConfig.ConfigPath).
@@ -83,19 +106,7 @@ Examples:
 				return err
 			}
 
-			if diffConfig.Out != "-" {
-				if err = os.WriteFile(diffConfig.Out, []byte(result), 0644); err != nil {
-					return errors.Wrap(err, "failed to write diff result to file")
-				}
-
-				return nil
-			}
-
-			if _, err = os.Stdout.Write([]byte(result)); err != nil {
-				return errors.Wrap(err, "failed to write diff result to stdout")
-			}
-
-			return nil
+			return writeDiffResult(result)
 		},
 	}
 	diffConfig struct {
@@ -109,6 +120,103 @@ Examples:
 		FilterVolatile bool
 	}
 )
+
+func writeDiffResult(result string) error {
+	if diffConfig.Out != "-" {
+		if err := os.WriteFile(diffConfig.Out, []byte(result), 0644); err != nil {
+			return errors.Wrap(err, "failed to write diff result to file")
+		}
+
+		return nil
+	}
+
+	if _, err := os.Stdout.Write([]byte(result)); err != nil {
+		return errors.Wrap(err, "failed to write diff result to stdout")
+	}
+
+	return nil
+}
+
+func diffKeyRotation(cmd *cobra.Command) error {
+	var (
+		app                      *cac.Application
+		local, remote            *keyrotation.Config
+		sourcePatch, targetPatch models.Rfc7396PatchOperation
+		result                   string
+		err                      error
+	)
+
+	if len(diffConfig.Filters) > 0 {
+		return errors.New("--filter cannot be combined with --workspace-key-rotation")
+	}
+
+	if diffConfig.Source != "" || diffConfig.Target != "" {
+		return errors.New("--source/--target do not apply to --workspace-key-rotation; the local file is always compared against the remote workspace")
+	}
+
+	if app, err = cac.InitApp(rootConfig.ConfigPath, rootConfig.Profile, false); err != nil {
+		return err
+	}
+
+	dirStore, err := keyRotationDirStore(app)
+	if err != nil {
+		return err
+	}
+
+	wid := rootConfig.WorkspaceKeyRotation
+
+	if local, err = dirStore.Read(wid); err != nil {
+		return errors.Wrap(err, "failed to read local key rotation")
+	}
+
+	if remote, err = app.KeyRotation.Read(cmd.Context(), wid); err != nil {
+		return err
+	}
+
+	source, target := keyRotationDiffConfigs(local, remote)
+
+	if sourcePatch, err = utils.FromModelToPatch(source); err != nil {
+		return errors.Wrap(err, "failed to convert local key rotation")
+	}
+
+	if targetPatch, err = utils.FromModelToPatch(target); err != nil {
+		return errors.Wrap(err, "failed to convert remote key rotation")
+	}
+
+	if result, err = diff.Tree(sourcePatch, targetPatch, diff.Colorize(diffConfig.Colors)); err != nil {
+		return err
+	}
+
+	return writeDiffResult(result)
+}
+
+// keyRotationDiffConfigs prepares the local and remote configurations for comparison. It modifies
+// its arguments and replaces nil with an empty configuration.
+func keyRotationDiffConfigs(local, remote *keyrotation.Config) (source, target *keyrotation.Config) {
+	if local == nil {
+		local = &keyrotation.Config{}
+	}
+
+	if remote == nil {
+		remote = &keyrotation.Config{}
+	}
+
+	// the server never echoes starting_from back, so it would always show up as a difference
+	for _, use := range local.Uses() {
+		use.Rotation.StartingFrom = nil
+	}
+
+	// push never removes a use that is absent locally, so diff previews only what push would change
+	if local.Sig == nil {
+		remote.Sig = nil
+	}
+
+	if local.Enc == nil {
+		remote.Enc = nil
+	}
+
+	return local, remote
+}
 
 func init() {
 	diffCmd.PersistentFlags().StringVar(&diffConfig.Source, "source", "", `Source of the comparison (required). Format: [profile@]source-type
@@ -148,6 +256,4 @@ Examples:
 Example: --with-secrets`)
 	diffCmd.PersistentFlags().BoolVar(&diffConfig.FilterVolatile, "no-volatile", false, `Ignore volatile fields (e.g. timestamps, generated IDs) when comparing.
 Example: --no-volatile`)
-
-	mustMarkRequired(diffCmd, "source", "target")
 }
