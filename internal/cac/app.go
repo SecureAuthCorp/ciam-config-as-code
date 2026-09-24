@@ -12,11 +12,12 @@ import (
 )
 
 type Application struct {
-	Config     *config.Configuration
-	RootConfig *config.RootConfiguration
-	Client     api.Source
-	Storage    storage.Storage
-	Validator  data.ValidatorApi
+	Config      *config.Configuration
+	RootConfig  *config.RootConfiguration
+	Client      api.Source
+	Storage     storage.Storage
+	Validator   data.ValidatorApi
+	KeyRotation *client.KeyRotationAPIStore
 }
 
 func InitApp(configPath string, profile string, tenant bool) (app *Application, err error) {
@@ -43,6 +44,7 @@ func InitApp(configPath string, profile string, tenant bool) (app *Application, 
 		}
 
 		app.Client = c
+		app.KeyRotation = c.KeyRotationStore()
 
 		if tenant {
 			app.Client = c.Tenant()
