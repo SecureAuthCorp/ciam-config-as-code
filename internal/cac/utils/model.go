@@ -66,19 +66,6 @@ func NormalizePatch(patch models.Rfc7396PatchOperation) (models.Rfc7396PatchOper
 	return out, nil
 }
 
-// AsPatch narrows a nested patch value to a patch of its own. A patch carries either shape
-// depending on whether it was decoded from JSON or built in memory.
-func AsPatch(v any) (models.Rfc7396PatchOperation, bool) {
-	switch value := v.(type) {
-	case models.Rfc7396PatchOperation:
-		return value, true
-	case map[string]any:
-		return value, true
-	default:
-		return nil, false
-	}
-}
-
 // CleanPatch cleans fields that are available in system model but not available in hub model
 func CleanPatch(patch models.Rfc7396PatchOperation) {
 	delete(patch, "id")

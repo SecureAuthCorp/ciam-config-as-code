@@ -1,21 +1,14 @@
-// Package keyrotation holds the automatic key rotation configuration that rides in a workspace
-// patch under the key_rotation key. It is not part of models.TreeServer, so it is popped out of
-// the patch before every strict decode of the tree models and handled explicitly.
+// Package keyrotation holds the automatic key rotation configuration of a workspace. It is not part
+// of models.TreeServer: it lives in its own workspaces/<wid>/key_rotation.yaml file and is only
+// handled by the dedicated --workspace-key-rotation mode.
 package keyrotation
 
 import (
-	"maps"
-
 	admodels "github.com/cloudentity/acp-client-go/clients/admin/models"
-	"github.com/cloudentity/acp-client-go/clients/hub/models"
-	"github.com/cloudentity/cac/internal/cac/utils"
 	"github.com/go-openapi/strfmt"
 	"github.com/gorhill/cronexpr"
 	"github.com/pkg/errors"
 )
-
-// Key is the patch key (and the workspace file name) the configuration lives under.
-const Key = "key_rotation"
 
 // UseSig and UseEnc are the only key uses ACP supports.
 const (
@@ -23,7 +16,7 @@ const (
 	UseEnc = "enc"
 )
 
-// Rotation is the on-disk and in-patch schema, owned by cac rather than reusing
+// Rotation is the on-disk schema, owned by cac rather than reusing
 // admodels.AutomaticKeyRotation: that model carries a read-only scheduled_at field users must not
 // write, and its non-pointer date-times would serialize as 0001-01-01 whenever they are unset.
 type Rotation struct {
@@ -41,66 +34,6 @@ type Config struct {
 type UseRotation struct {
 	Use      string
 	Rotation *Rotation
-}
-
-// Pop removes Key from patch and strict-decodes it. It returns (nil, nil) when the key is absent
-// and does not validate the decoded configuration.
-func Pop(patch models.Rfc7396PatchOperation) (*Config, error) {
-	var (
-		raw any
-		ok  bool
-	)
-
-	if raw, ok = patch[Key]; !ok {
-		return nil, nil
-	}
-
-	delete(patch, Key)
-
-	return decode(raw)
-}
-
-// Get is the non-mutating variant of Pop.
-func Get(patch models.Rfc7396PatchOperation) (*Config, error) {
-	var (
-		raw any
-		ok  bool
-	)
-
-	if raw, ok = patch[Key]; !ok {
-		return nil, nil
-	}
-
-	return decode(raw)
-}
-
-func decode(raw any) (*Config, error) {
-	var (
-		sub    models.Rfc7396PatchOperation
-		config *Config
-		ok     bool
-		err    error
-	)
-
-	if sub, ok = utils.AsPatch(raw); !ok {
-		return nil, errors.Errorf("failed to parse %s: expected an object, got %T", Key, raw)
-	}
-
-	// FromPatchToModel cleans the map it is given, so decode a copy and leave the caller's alone.
-	patch := make(models.Rfc7396PatchOperation, len(sub))
-	maps.Copy(patch, sub)
-
-	if config, err = utils.FromPatchToModel[Config](patch); err != nil {
-		return nil, errors.Wrapf(err, "failed to parse %s", Key)
-	}
-
-	// a configuration with no use configures nothing, so it is reported as absent and nothing is
-	// written or pushed for it
-	if config.Sig == nil && config.Enc == nil {
-		return nil, nil
-	}
-
-	return config, nil
 }
 
 // Uses returns the configured uses, sig first, skipping the ones that are not set.
@@ -127,11 +60,11 @@ func (c *Config) Uses() []UseRotation {
 func (c *Config) Validate() error {
 	for _, use := range c.Uses() {
 		if use.Rotation.Cron == "" {
-			return errors.Errorf("%s: cron is required for %s, ACP requires a valid cron even when enabled is false", Key, use.Use)
+			return errors.Errorf("cron is required for %s (the server requires a valid cron even when enabled is false)", use.Use)
 		}
 
 		if _, err := cronexpr.Parse(use.Rotation.Cron); err != nil {
-			return errors.Wrapf(err, "%s: invalid cron for %s", Key, use.Use)
+			return errors.Wrapf(err, "invalid cron for %s", use.Use)
 		}
 	}
 
