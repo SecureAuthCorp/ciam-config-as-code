@@ -190,7 +190,12 @@ func (t *TenantStorage) Read(ctx context.Context, opts ...api.SourceOpt) (models
                 return nil, err
             }
 
-            id := workspaceConfig["id"].(string)
+            // a workspace dir without server.yaml holds nothing the tenant tree can carry
+            id, ok := workspaceConfig["id"].(string)
+            if !ok {
+                continue
+            }
+
             delete(workspaceConfig, "id")
             delete(workspaceConfig, "tenant_id")
             servers[id] = workspaceConfig

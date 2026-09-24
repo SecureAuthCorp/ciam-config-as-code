@@ -407,3 +407,35 @@ func TestTenantStoragePhoneProviderConfigRoundTrip(t *testing.T) {
     require.Equal(t, "ACtest", back.PhoneProviderConfig.Providers[0].Twilio.Sid)
     require.Equal(t, "tok", back.PhoneProviderConfig.Providers[0].Twilio.AuthToken)
 }
+
+func TestTenantStorageReadSkipsWorkspaceDirWithoutServer(t *testing.T) {
+    require.NoError(t, logging.InitLogging(&logging.Configuration{Level: "debug"}))
+
+    dir := t.TempDir()
+
+    st, err := storage.InitMultiStorage(&storage.MultiStorageConfiguration{
+        DirPath: []string{dir},
+    }, storage.InitTenantStorage)
+    require.NoError(t, err)
+
+    written, err := utils.FromModelToPatch(&models.TreeTenant{
+        Servers: models.TreeServers{
+            "demo": models.TreeServer{Name: "demo workspace"},
+        },
+    })
+    require.NoError(t, err)
+
+    require.NoError(t, st.Write(context.Background(), written, api.WithWorkspace("demo")))
+
+    // pull --workspace-key-rotation in a tenant layout creates a workspace dir holding only key_rotation.yaml
+    require.NoError(t, os.MkdirAll(filepath.Join(dir, "workspaces", "other"), 0755))
+    require.NoError(t, os.WriteFile(filepath.Join(dir, "workspaces", "other", "key_rotation.yaml"), []byte("sig:\n  cron: \"0 0 1 * *\"\n"), 0644))
+
+    read, err := st.Read(context.Background(), api.WithWorkspace("demo"))
+    require.NoError(t, err)
+
+    servers, ok := read["servers"].(map[string]any)
+    require.True(t, ok)
+    require.Len(t, servers, 1)
+    require.Contains(t, servers, "demo")
+}
