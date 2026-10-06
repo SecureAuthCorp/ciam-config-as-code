@@ -100,6 +100,16 @@ sgi:
 `,
 		},
 		{
+			name: "workspace patch keys id and tenant_id",
+			content: `
+id: demo
+tenant_id: t1
+sig:
+  enabled: true
+  cron: '@monthly'
+`,
+		},
+		{
 			name: "read only scheduled_at",
 			content: `
 sig:

@@ -165,6 +165,10 @@ func pushKeyRotation(cmd *cobra.Command) error {
 			return errors.Wrap(err, "failed to marshal key rotation")
 		}
 
+		if pushConfig.Out != "-" {
+			return errors.Wrap(os.WriteFile(pushConfig.Out, bts, 0644), "failed to write key rotation to file")
+		}
+
 		if _, err = os.Stdout.Write(bts); err != nil {
 			return errors.Wrap(err, "failed to write key rotation to stdout")
 		}

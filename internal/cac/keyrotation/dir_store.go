@@ -4,9 +4,9 @@ import (
 	"os"
 	"path/filepath"
 
-	"github.com/cloudentity/acp-client-go/clients/hub/models"
 	"github.com/cloudentity/cac/internal/cac/templates"
 	"github.com/cloudentity/cac/internal/cac/utils"
+	"github.com/go-json-experiment/json"
 	ccyaml "github.com/goccy/go-yaml"
 	"github.com/pkg/errors"
 )
@@ -54,7 +54,9 @@ func (d *DirStore) Read(wid string) (*Config, error) {
 			return nil, errors.Wrapf(err, "failed to parse %s", path)
 		}
 
-		if config, err = utils.FromPatchToModel[Config](models.Rfc7396PatchOperation(raw)); err != nil {
+		// decoded directly rather than through utils.FromPatchToModel, which strips the
+		// workspace-patch keys id and tenant_id; here every unknown field must be rejected
+		if config, err = decodeStrict(raw); err != nil {
 			return nil, errors.Wrapf(err, "failed to parse %s", path)
 		}
 
@@ -97,4 +99,22 @@ func (d *DirStore) Write(wid string, cfg *Config) error {
 	}
 
 	return nil
+}
+
+func decodeStrict(raw map[string]any) (*Config, error) {
+	var (
+		config Config
+		bts    []byte
+		err    error
+	)
+
+	if bts, err = json.Marshal(raw); err != nil {
+		return nil, err
+	}
+
+	if err = json.Unmarshal(bts, &config, json.RejectUnknownMembers(true)); err != nil {
+		return nil, err
+	}
+
+	return &config, nil
 }
