@@ -5,7 +5,7 @@ import (
 	"testing"
 	"time"
 
-	admodels "github.com/cloudentity/acp-client-go/clients/admin/models"
+	smodels "github.com/cloudentity/acp-client-go/clients/system/models"
 	"github.com/cloudentity/cac/internal/cac/keyrotation"
 	"github.com/go-openapi/strfmt"
 	"github.com/stretchr/testify/require"
@@ -114,7 +114,7 @@ func TestToModel(t *testing.T) {
 		from := startingFrom(t, "2026-10-01T00:00:00Z")
 		rotation := &keyrotation.Rotation{Enabled: true, Cron: "@monthly", StartingFrom: from}
 
-		require.Equal(t, &admodels.AutomaticKeyRotation{
+		require.Equal(t, &smodels.AutomaticKeyRotation{
 			Cron:         "@monthly",
 			Enabled:      true,
 			StartingFrom: *from,
@@ -135,11 +135,11 @@ func TestFromModel(t *testing.T) {
 	})
 
 	t.Run("never configured", func(t *testing.T) {
-		require.Nil(t, keyrotation.FromModel(&admodels.AutomaticKeyRotation{Cron: ""}))
+		require.Nil(t, keyrotation.FromModel(&smodels.AutomaticKeyRotation{Cron: ""}))
 	})
 
 	t.Run("drops server owned fields", func(t *testing.T) {
-		rotation := keyrotation.FromModel(&admodels.AutomaticKeyRotation{
+		rotation := keyrotation.FromModel(&smodels.AutomaticKeyRotation{
 			Cron:         "0 0 1 * *",
 			Enabled:      true,
 			ScheduledAt:  *startingFrom(t, "2026-11-01T00:00:00Z"),

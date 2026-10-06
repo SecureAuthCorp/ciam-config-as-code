@@ -1,8 +1,8 @@
 package client_test
 
 import (
-	admodels "github.com/cloudentity/acp-client-go/clients/admin/models"
 	"github.com/cloudentity/acp-client-go/clients/hub/models"
+	smodels "github.com/cloudentity/acp-client-go/clients/system/models"
 	"github.com/go-json-experiment/json"
 	"github.com/go-openapi/strfmt"
 	"github.com/stretchr/testify/require"
@@ -16,7 +16,7 @@ import (
 )
 
 const (
-	keyRotationPathPrefix = "/api/admin/postmance/servers/"
+	keyRotationPathPrefix = "/api/system/postmance/servers/"
 	keyRotationPathSuffix = "/keys/automatic-key-rotation"
 )
 
@@ -24,7 +24,7 @@ const (
 type KeyRotationPut struct {
 	Wid  string
 	Use  string
-	Body admodels.AutomaticKeyRotation
+	Body smodels.AutomaticKeyRotation
 }
 
 // MockServer wraps httptest.Server and records key rotation calls.
@@ -76,7 +76,7 @@ func (m *MockServer) handleKeyRotation(t *testing.T, res http.ResponseWriter, re
 		body, err := io.ReadAll(req.Body)
 		require.NoError(t, err)
 
-		var rotation admodels.AutomaticKeyRotation
+		var rotation smodels.AutomaticKeyRotation
 		require.NoError(t, json.Unmarshal(body, &rotation))
 
 		m.mu.Lock()

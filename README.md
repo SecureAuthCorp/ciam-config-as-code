@@ -274,6 +274,10 @@ cac --config ./cac.yaml --profile dev push --workspace-key-rotation demo
 cac --config ./cac.yaml --profile dev diff --workspace-key-rotation demo
 ```
 
+The system workspace client used by cac needs the `manage_servers` scope for this
+mode, in addition to `manage_configuration`: add it to `client.scopes` in the
+[configuration](#configuration).
+
 Constraints:
 
 - `sig` and `enc` are both optional. A use missing from the file is left untouched

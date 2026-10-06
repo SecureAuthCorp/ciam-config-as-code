@@ -4,7 +4,7 @@
 package keyrotation
 
 import (
-	admodels "github.com/cloudentity/acp-client-go/clients/admin/models"
+	smodels "github.com/cloudentity/acp-client-go/clients/system/models"
 	"github.com/go-openapi/strfmt"
 	"github.com/gorhill/cronexpr"
 	"github.com/pkg/errors"
@@ -17,7 +17,7 @@ const (
 )
 
 // Rotation is the on-disk schema, owned by cac rather than reusing
-// admodels.AutomaticKeyRotation: that model carries a read-only scheduled_at field users must not
+// smodels.AutomaticKeyRotation: that model carries a read-only scheduled_at field users must not
 // write, and its non-pointer date-times would serialize as 0001-01-01 whenever they are unset.
 type Rotation struct {
 	Enabled      bool             `json:"enabled"`
@@ -72,8 +72,8 @@ func (c *Config) Validate() error {
 }
 
 // ToModel converts a Rotation to the API model. ScheduledAt is left zero: it is read-only.
-func (r *Rotation) ToModel() *admodels.AutomaticKeyRotation {
-	out := &admodels.AutomaticKeyRotation{
+func (r *Rotation) ToModel() *smodels.AutomaticKeyRotation {
+	out := &smodels.AutomaticKeyRotation{
 		Cron:    r.Cron,
 		Enabled: r.Enabled,
 	}
@@ -88,7 +88,7 @@ func (r *Rotation) ToModel() *admodels.AutomaticKeyRotation {
 // FromModel builds a Rotation out of a GET payload. It returns nil when the use was never
 // configured, which ACP reports as an empty cron rather than a 404. StartingFrom and ScheduledAt
 // are dropped on purpose: the server never echoes starting_from back, and scheduled_at is read-only.
-func FromModel(m *admodels.AutomaticKeyRotation) *Rotation {
+func FromModel(m *smodels.AutomaticKeyRotation) *Rotation {
 	if m == nil || m.Cron == "" {
 		return nil
 	}
