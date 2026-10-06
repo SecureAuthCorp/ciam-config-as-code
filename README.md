@@ -239,6 +239,63 @@ map[string]any{
 - 	"ciba_authentication_service":               map[string]any{"type": string("mock")},
 ```
 
+### Managing key rotation
+
+Automatic key rotation settings of a workspace live behind a dedicated API and are
+managed with the exclusive `--workspace-key-rotation <workspace>` flag (mutually
+exclusive with `--workspace`, `--tenant`, and `--filter`). Plain `pull`, `push`, and
+`diff` never read or write these settings. They are stored in
+`workspaces/<workspace-id>/key_rotation.yaml`. With several storage directories, the
+file is taken whole from the first directory that has it; files are not merged across
+directories:
+
+```yaml
+# workspaces/demo/key_rotation.yaml
+sig:
+  enabled: true
+  cron: "0 0 1 * *"
+  starting_from: "2030-01-01T00:00:00Z"
+enc:
+  enabled: false
+  cron: "0 0 1 1 *" # required even when disabled
+```
+
+```bash
+# write the remote settings to workspaces/demo/key_rotation.yaml
+cac --config ./cac.yaml --profile dev pull --workspace-key-rotation demo
+
+# preview what a push would send
+cac --config ./cac.yaml --profile dev push --workspace-key-rotation demo --dry-run
+
+# replace the remote settings of every key use present in the file
+cac --config ./cac.yaml --profile dev push --workspace-key-rotation demo
+
+# compare the uses present in the local file against the remote workspace
+cac --config ./cac.yaml --profile dev diff --workspace-key-rotation demo
+```
+
+The system workspace client used by cac needs the `manage_servers` scope for this
+mode, in addition to `manage_configuration`: add it to `client.scopes` in the
+[configuration](#configuration).
+
+Constraints:
+
+- `sig` and `enc` are both optional. A use missing from the file is left untouched
+  remotely, so `diff` does not report it either, and `pull` omits a use that
+  SecureAuth reports as never configured.
+- `cron` is required for every use present; `enabled` defaults to `false`. SecureAuth
+  validates `cron` even when `enabled` is `false`.
+- `cron` uses the [gorhill/cronexpr](https://github.com/gorhill/cronexpr) syntax:
+  5 fields, an optional 6th year field, or 7 fields with seconds first. The
+  descriptors `@yearly`, `@annually`, `@monthly`, `@weekly`, `@daily`, and
+  `@hourly` and the `L`, `W`, and `#` modifiers are supported; `@every` is not.
+- `starting_from` is optional and write-only: SecureAuth never returns it, so `pull`
+  never writes it and `diff` ignores it. It is only honored when it is in the future.
+- `scheduled_at` is read-only and rejected in the file.
+
+> **Note:** `push --workspace-key-rotation` validates every cron before any API call,
+> and `--dry-run` prints the settings that would be sent instead of pushing them.
+
 ## Templates
 
 Templates are used to generate configuration files. They are using [Go template language](https://golang.org/pkg/text/template/).

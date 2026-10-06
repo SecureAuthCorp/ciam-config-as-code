@@ -2,17 +2,108 @@ package client_test
 
 import (
 	"github.com/cloudentity/acp-client-go/clients/hub/models"
+	smodels "github.com/cloudentity/acp-client-go/clients/system/models"
 	"github.com/go-json-experiment/json"
 	"github.com/go-openapi/strfmt"
 	"github.com/stretchr/testify/require"
+	"io"
 	"net/http"
 	"net/http/httptest"
+	"strings"
+	"sync"
 	"testing"
 	"time"
 )
 
-func CreateMockServer(t *testing.T) *httptest.Server {
-	testServer := httptest.NewServer(http.HandlerFunc(func(res http.ResponseWriter, req *http.Request) {
+const (
+	keyRotationPathPrefix = "/api/system/postmance/servers/"
+	keyRotationPathSuffix = "/keys/automatic-key-rotation"
+)
+
+// KeyRotationPut is a PUT the mock received on the automatic key rotation endpoint.
+type KeyRotationPut struct {
+	Wid  string
+	Use  string
+	Body smodels.AutomaticKeyRotation
+}
+
+// MockServer wraps httptest.Server and records key rotation calls.
+type MockServer struct {
+	*httptest.Server
+
+	mu              sync.Mutex
+	keyRotationPuts []KeyRotationPut
+	keyRotationGets []string
+}
+
+func (m *MockServer) KeyRotationPuts() []KeyRotationPut {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+
+	return append([]KeyRotationPut(nil), m.keyRotationPuts...)
+}
+
+// KeyRotationGetUses returns the use query values of the key rotation GETs, in order.
+func (m *MockServer) KeyRotationGetUses() []string {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+
+	return append([]string(nil), m.keyRotationGets...)
+}
+
+func (m *MockServer) handleKeyRotation(t *testing.T, res http.ResponseWriter, req *http.Request) {
+	wid := strings.TrimSuffix(strings.TrimPrefix(req.URL.Path, keyRotationPathPrefix), keyRotationPathSuffix)
+	use := req.URL.Query().Get("use")
+
+	res.Header().Set("Content-Type", "application/json")
+
+	switch req.Method {
+	case http.MethodGet:
+		m.mu.Lock()
+		m.keyRotationGets = append(m.keyRotationGets, use)
+		m.mu.Unlock()
+
+		// demo has only sig configured, enc-only only enc, and any other workspace nothing
+		js := `{"enabled":false,"cron":"","starting_from":"0001-01-01T00:00:00Z","scheduled_at":"0001-01-01T00:00:00Z"}`
+		if (wid == "demo" && use == "sig") || (wid == "enc-only" && use == "enc") {
+			js = `{"enabled":true,"cron":"0 0 1 * *","scheduled_at":"2026-10-01T00:00:00Z","starting_from":"0001-01-01T00:00:00Z"}`
+		}
+
+		res.WriteHeader(http.StatusOK)
+		_, err := res.Write([]byte(js))
+		require.NoError(t, err)
+	case http.MethodPut:
+		body, err := io.ReadAll(req.Body)
+		require.NoError(t, err)
+
+		var rotation smodels.AutomaticKeyRotation
+		require.NoError(t, json.Unmarshal(body, &rotation))
+
+		m.mu.Lock()
+		m.keyRotationPuts = append(m.keyRotationPuts, KeyRotationPut{Wid: wid, Use: use, Body: rotation})
+		m.mu.Unlock()
+
+		if wid == "failing" {
+			res.WriteHeader(http.StatusInternalServerError)
+			return
+		}
+
+		res.WriteHeader(http.StatusOK)
+		_, err = res.Write(body)
+		require.NoError(t, err)
+	default:
+		res.WriteHeader(http.StatusMethodNotAllowed)
+	}
+}
+
+func CreateMockServer(t *testing.T) *MockServer {
+	m := &MockServer{}
+	m.Server = httptest.NewServer(http.HandlerFunc(func(res http.ResponseWriter, req *http.Request) {
+
+	if strings.HasPrefix(req.URL.Path, keyRotationPathPrefix) && strings.HasSuffix(req.URL.Path, keyRotationPathSuffix) {
+		m.handleKeyRotation(t, res, req)
+		return
+	}
 
 	if req.URL.Path == "/postmance/system/.well-known/openid-configuration" {
 		js := []byte(`{
@@ -101,5 +192,5 @@ func CreateMockServer(t *testing.T) *httptest.Server {
 	_, err = res.Write(js)
 	require.NoError(t, err)
 	}))
-return testServer
+return m
 }
