@@ -75,6 +75,7 @@ enforce_pkce: false
 enforce_pkce_for_public_clients: false
 grant_types: []
 id: demo
+id_jag_ttl: 0s
 id_token_ttl: 0s
 initialize: false
 name: demo workspace
