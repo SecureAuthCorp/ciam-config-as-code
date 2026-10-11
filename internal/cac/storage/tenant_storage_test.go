@@ -428,7 +428,7 @@ func TestTenantStorageReadSkipsWorkspaceDirWithoutServer(t *testing.T) {
 
     require.NoError(t, st.Write(context.Background(), written, api.WithWorkspace("demo")))
 
-    // pull --workspace-key-rotation in a tenant layout creates a workspace dir holding only key_rotation.yaml
+    // pull key-rotation in a tenant layout creates a workspace dir holding only key_rotation.yaml
     require.NoError(t, os.MkdirAll(filepath.Join(dir, "workspaces", "other"), 0755))
     require.NoError(t, os.WriteFile(filepath.Join(dir, "workspaces", "other", "key_rotation.yaml"), []byte("sig:\n  cron: \"0 0 1 * *\"\n"), 0644))
 

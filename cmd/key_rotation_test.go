@@ -1,6 +1,7 @@
 package cmd
 
 import (
+	"io"
 	"testing"
 	"time"
 
@@ -70,22 +71,31 @@ func TestKeyRotationDiffConfigs(t *testing.T) {
 	})
 }
 
-func TestDiffRequiredFlags(t *testing.T) {
+// TestKeyRotationFlagScoping checks that the required flags of push and diff still apply to them, while
+// the key-rotation subcommands neither require nor accept the parent commands' own flags.
+func TestKeyRotationFlagScoping(t *testing.T) {
 	tcs := []struct {
-		source, target string
-		err            string
+		args []string
+		err  string
 	}{
-		{"", "", `required flag(s) "source", "target" not set`},
-		{"local", "", `required flag(s) "target" not set`},
-		{"", "remote", `required flag(s) "source" not set`},
+		{[]string{"--workspace", "demo", "push"}, `required flag(s) "method" not set`},
+		{[]string{"--workspace", "demo", "diff"}, `required flag(s) "source", "target" not set`},
+		{[]string{"--workspace", "demo", "push", "key-rotation", "--method", "import"}, "unknown flag: --method"},
+		{[]string{"--workspace", "demo", "pull", "key-rotation", "--filter", "clients"}, "unknown flag: --filter"},
+		{[]string{"--workspace", "demo", "diff", "key-rotation", "--source", "local"}, "unknown flag: --source"},
 	}
 
-	saved := diffConfig
-	t.Cleanup(func() { diffConfig = saved })
+	rootCmd.SetOut(io.Discard)
+	rootCmd.SetErr(io.Discard)
+	t.Cleanup(func() {
+		rootCmd.SetOut(nil)
+		rootCmd.SetErr(nil)
+		rootCmd.SetArgs(nil)
+	})
 
 	for _, tc := range tcs {
-		diffConfig.Source, diffConfig.Target = tc.source, tc.target
+		rootCmd.SetArgs(tc.args)
 
-		require.EqualError(t, diffCmd.RunE(diffCmd, nil), tc.err)
+		require.EqualError(t, rootCmd.Execute(), tc.err, tc.args)
 	}
 }

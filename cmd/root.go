@@ -28,11 +28,10 @@ Examples:
 )
 
 type RootConfig struct {
-	ConfigPath           string
-	Profile              string
-	Workspace            string
-	Tenant               bool
-	WorkspaceKeyRotation string
+	ConfigPath string
+	Profile    string
+	Workspace  string
+	Tenant     bool
 }
 
 func init() {
@@ -46,19 +45,13 @@ Example: --tenant`)
 	rootCmd.PersistentFlags().StringVar(&rootConfig.Workspace, "workspace", "", `Workspace identifier to operate on.
 Mutually exclusive with --tenant.
 Example: --workspace demo`)
-	rootCmd.PersistentFlags().StringVar(&rootConfig.WorkspaceKeyRotation, "workspace-key-rotation", "", `Operate exclusively on the automatic key rotation settings of the given workspace.
-Mutually exclusive with --workspace, --tenant, and --filter.
-Examples:
-  cac --config ./cac.yaml --profile dev pull --workspace-key-rotation demo
-  cac --config ./cac.yaml --profile dev push --workspace-key-rotation demo
-  cac --config ./cac.yaml --profile dev diff --workspace-key-rotation demo`)
 
 	rootCmd.AddCommand(pullCmd)
 	rootCmd.AddCommand(pushCmd)
 	rootCmd.AddCommand(diffCmd)
 
-	rootCmd.MarkFlagsMutuallyExclusive("workspace", "tenant", "workspace-key-rotation")
-	rootCmd.MarkFlagsOneRequired("workspace", "tenant", "workspace-key-rotation")
+	rootCmd.MarkFlagsMutuallyExclusive("workspace", "tenant")
+	rootCmd.MarkFlagsOneRequired("workspace", "tenant")
 }
 
 func Execute() error {

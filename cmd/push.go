@@ -1,14 +1,10 @@
 package cmd
 
 import (
-	"os"
-
 	"github.com/cloudentity/acp-client-go/clients/hub/models"
 	"github.com/cloudentity/cac/internal/cac"
 	"github.com/cloudentity/cac/internal/cac/api"
-	"github.com/cloudentity/cac/internal/cac/keyrotation"
 	"github.com/cloudentity/cac/internal/cac/storage"
-	"github.com/cloudentity/cac/internal/cac/utils"
 	"github.com/pkg/errors"
 	"github.com/spf13/cobra"
 	"golang.org/x/exp/slog"
@@ -45,14 +41,6 @@ Examples:
 				data models.Rfc7396PatchOperation
 				err  error
 			)
-
-			if rootConfig.WorkspaceKeyRotation != "" {
-				return pushKeyRotation(cmd)
-			}
-
-			if pushConfig.Method == "" {
-				return errors.New(`required flag(s) "method" not set`)
-			}
 
 			if app, err = cac.InitApp(rootConfig.ConfigPath, rootConfig.Profile, rootConfig.Tenant); err != nil {
 				return err
@@ -120,71 +108,6 @@ Examples:
 	}
 )
 
-func pushKeyRotation(cmd *cobra.Command) error {
-	var (
-		app *cac.Application
-		cfg *keyrotation.Config
-		err error
-	)
-
-	if len(pushConfig.Filters) > 0 {
-		return errors.New("--filter cannot be combined with --workspace-key-rotation")
-	}
-
-	if pushConfig.Method != "" {
-		return errors.New("--method does not apply to --workspace-key-rotation; each configured key use is always replaced")
-	}
-
-	if app, err = cac.InitApp(rootConfig.ConfigPath, rootConfig.Profile, false); err != nil {
-		return err
-	}
-
-	dirStore, err := keyRotationDirStore(app)
-	if err != nil {
-		return err
-	}
-
-	wid := rootConfig.WorkspaceKeyRotation
-
-	if cfg, err = dirStore.Read(wid); err != nil {
-		return errors.Wrap(err, "failed to read local key rotation")
-	}
-
-	if cfg == nil {
-		slog.Info("No key rotation configuration to push", "workspace", wid)
-		return nil
-	}
-
-	if err = cfg.Validate(); err != nil {
-		return errors.Wrap(err, "failed to validate key rotation")
-	}
-
-	if pushConfig.DryRun {
-		bts, err := utils.ToYaml(cfg)
-		if err != nil {
-			return errors.Wrap(err, "failed to marshal key rotation")
-		}
-
-		if pushConfig.Out != "-" {
-			return errors.Wrap(os.WriteFile(pushConfig.Out, bts, 0644), "failed to write key rotation to file")
-		}
-
-		if _, err = os.Stdout.Write(bts); err != nil {
-			return errors.Wrap(err, "failed to write key rotation to stdout")
-		}
-
-		return nil
-	}
-
-	if err = app.KeyRotation.Write(cmd.Context(), wid, cfg); err != nil {
-		return err
-	}
-
-	slog.Info("Pushed key rotation", "workspace", wid, "uses", len(cfg.Uses()))
-
-	return nil
-}
-
 func init() {
 	pushCmd.PersistentFlags().BoolVar(&pushConfig.DryRun, "dry-run", false, `Write the resolved configuration to disk or stdout instead of pushing to the server.
 Use with --out to control the destination.
@@ -195,21 +118,21 @@ Examples:
   --out -            (stdout)
   --out ./out.yaml   (single file)
   --out ./out/       (directory)`)
-	pushCmd.PersistentFlags().StringVar(&pushConfig.Mode, "mode", "update", `Conflict resolution mode when a resource already exists on the server.
+	pushCmd.Flags().StringVar(&pushConfig.Mode, "mode", "update", `Conflict resolution mode when a resource already exists on the server.
 One of: ignore, fail, update
   ignore - skip existing resources
   fail   - abort the push on conflict
   update - overwrite the existing resource (default)
 Example: --mode update`)
-	pushCmd.PersistentFlags().StringVar(&pushConfig.Method, "method", "", `How to apply the configuration to the server (required).
+	pushCmd.Flags().StringVar(&pushConfig.Method, "method", "", `How to apply the configuration to the server (required).
 One of: patch, import
   patch  - merge remote configuration with your local config before applying
   import - replace remote configuration with your local config
 Example: --method patch`)
-	pushCmd.PersistentFlags().BoolVar(&pushConfig.NoLocalValidate, "no-validate", false, `Skip client-side validation before pushing.
+	pushCmd.Flags().BoolVar(&pushConfig.NoLocalValidate, "no-validate", false, `Skip client-side validation before pushing.
 Workaround for cases where local validation rejects a configuration the server accepts.
 Example: --no-validate`)
-	pushCmd.PersistentFlags().StringSliceVar(&pushConfig.Filters, "filter", []string{}, `Restrict the push to selected top-level resources (comma-separated or repeated).
+	pushCmd.Flags().StringSliceVar(&pushConfig.Filters, "filter", []string{}, `Restrict the push to selected top-level resources (comma-separated or repeated).
 Workspace resources: clients, idps, claims, custom_apps, gateways, policies, policy_execution_points,
                      pools, scopes (alias of scopes_without_service), scripts, script_execution_points,
                      server_consent, servers_bindings, services, theme_binding, webhooks,
@@ -222,4 +145,6 @@ Examples:
   --filter scopes --filter pools
   --filter root
   --filter root,clients`)
+
+	mustMarkRequired(pushCmd, "method")
 }

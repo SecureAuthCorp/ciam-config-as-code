@@ -242,12 +242,14 @@ map[string]any{
 ### Managing key rotation
 
 Automatic key rotation settings of a workspace live behind a dedicated API and are
-managed with the exclusive `--workspace-key-rotation <workspace>` flag (mutually
-exclusive with `--workspace`, `--tenant`, and `--filter`). Plain `pull`, `push`, and
-`diff` never read or write these settings. They are stored in
-`workspaces/<workspace-id>/key_rotation.yaml`. With several storage directories, the
-file is taken whole from the first directory that has it; files are not merged across
-directories:
+managed with the `key-rotation` subcommand of `pull`, `push`, and `diff`, for the
+workspace selected with `--workspace` (`--tenant` is rejected). The subcommands do not
+take the parent commands' own flags such as `--filter`, `--method`, or `--source`; only
+`push key-rotation` keeps `--dry-run` and `--out`, and `diff key-rotation` keeps `--out`
+and `--colors`. Plain `pull`, `push`, and `diff` never read or write these settings.
+They are stored in `workspaces/<workspace-id>/key_rotation.yaml`. With several storage
+directories, the file is taken whole from the first directory that has it; files are
+not merged across directories:
 
 ```yaml
 # workspaces/demo/key_rotation.yaml
@@ -262,20 +264,20 @@ enc:
 
 ```bash
 # write the remote settings to workspaces/demo/key_rotation.yaml
-cac --config ./cac.yaml --profile dev pull --workspace-key-rotation demo
+cac --config ./cac.yaml --profile dev --workspace demo pull key-rotation
 
 # preview what a push would send
-cac --config ./cac.yaml --profile dev push --workspace-key-rotation demo --dry-run
+cac --config ./cac.yaml --profile dev --workspace demo push key-rotation --dry-run
 
 # replace the remote settings of every key use present in the file
-cac --config ./cac.yaml --profile dev push --workspace-key-rotation demo
+cac --config ./cac.yaml --profile dev --workspace demo push key-rotation
 
 # compare the uses present in the local file against the remote workspace
-cac --config ./cac.yaml --profile dev diff --workspace-key-rotation demo
+cac --config ./cac.yaml --profile dev --workspace demo diff key-rotation
 ```
 
-The system workspace client used by cac needs the `manage_servers` scope for this
-mode, in addition to `manage_configuration`: add it to `client.scopes` in the
+The system workspace client used by cac needs the `manage_servers` scope for these
+subcommands, in addition to `manage_configuration`: add it to `client.scopes` in the
 [configuration](#configuration).
 
 Constraints:
@@ -293,7 +295,7 @@ Constraints:
   never writes it and `diff` ignores it. It is only honored when it is in the future.
 - `scheduled_at` is read-only and rejected in the file.
 
-> **Note:** `push --workspace-key-rotation` validates every cron before any API call,
+> **Note:** `push key-rotation` validates every cron before any API call,
 > and `--dry-run` prints the settings that would be sent instead of pushing them.
 
 ## Templates
