@@ -31,6 +31,10 @@ func InitApp(configPath string, profile string, tenant bool) (app *Application, 
 		return app, err
 	}
 
+	if err = app.Config.Validate(); err != nil {
+		return app, err
+	}
+
 	if err = logging.InitLogging(app.Config.Logging); err != nil {
 		return app, err
 	}

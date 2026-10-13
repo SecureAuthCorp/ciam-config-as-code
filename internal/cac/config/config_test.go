@@ -175,4 +175,127 @@ func TestReadingConfiguration(t *testing.T) {
 		require.NotNil(t, conf.Client.IssuerURL)
 		require.Equal(t, "https://postmance.eu.authz.cloudentity.io/postmance/system", conf.Client.IssuerURL.String())
 	})
+
+	t.Run("features are off by default", func(t *testing.T) {
+		rootConf, err := config.InitConfig("./../../../examples/e2e/config.yaml")
+		require.NoError(t, err)
+
+		conf, err := rootConf.ForProfile("")
+		require.NoError(t, err)
+		require.NotNil(t, conf.Features)
+		require.False(t, conf.KeyRotationEnabled())
+
+		stage, err := rootConf.ForProfile("stage")
+		require.NoError(t, err)
+		require.False(t, stage.KeyRotationEnabled())
+	})
+
+	t.Run("profile features override the default features", func(t *testing.T) {
+		rootConf, err := config.InitConfig("./testdata/features.yaml")
+		require.NoError(t, err)
+
+		defaultConf, err := rootConf.ForProfile("")
+		require.NoError(t, err)
+		require.True(t, defaultConf.Features.KeyRotation)
+
+		off, err := rootConf.ForProfile("off")
+		require.NoError(t, err)
+		require.False(t, off.Features.KeyRotation)
+
+		// a profile without features falls back to an independent copy of the default
+		bare, err := rootConf.ForProfile("bare")
+		require.NoError(t, err)
+		require.True(t, bare.Features.KeyRotation)
+		require.NotSame(t, defaultConf.Features, bare.Features)
+
+		bare.Features.KeyRotation = false
+		require.True(t, defaultConf.Features.KeyRotation,
+			"mutating the profile features must not affect the default features")
+	})
+
+	t.Run("profile enables a feature the default leaves off", func(t *testing.T) {
+		rootConf, err := config.InitConfig("./testdata/features_profile.yaml")
+		require.NoError(t, err)
+
+		defaultConf, err := rootConf.ForProfile("")
+		require.NoError(t, err)
+		require.False(t, defaultConf.KeyRotationEnabled())
+
+		on, err := rootConf.ForProfile("on")
+		require.NoError(t, err)
+		require.True(t, on.KeyRotationEnabled())
+
+		bare, err := rootConf.ForProfile("bare")
+		require.NoError(t, err)
+		require.False(t, bare.KeyRotationEnabled())
+	})
+
+	t.Run("features from env", func(t *testing.T) {
+		t.Setenv("FEATURES_KEY_ROTATION", "true")
+
+		rootConf, err := config.InitConfig("./testdata/profile_env_conflict.yaml")
+		require.NoError(t, err)
+
+		defaultConf, err := rootConf.ForProfile("")
+		require.NoError(t, err)
+		require.True(t, defaultConf.KeyRotationEnabled())
+
+		// stage declares no features, so it inherits the default
+		stage, err := rootConf.ForProfile("stage")
+		require.NoError(t, err)
+		require.True(t, stage.KeyRotationEnabled())
+	})
+
+	t.Run("profile features from env", func(t *testing.T) {
+		t.Setenv("PROFILES_ON_FEATURES_KEY_ROTATION", "false")
+
+		rootConf, err := config.InitConfig("./testdata/features_profile.yaml")
+		require.NoError(t, err)
+
+		on, err := rootConf.ForProfile("on")
+		require.NoError(t, err)
+		require.False(t, on.KeyRotationEnabled())
+	})
+}
+
+func TestValidateConfiguration(t *testing.T) {
+	const scopeErr = "features.key_rotation requires the manage_servers scope in client.scopes"
+
+	t.Run("key rotation with the default scopes is rejected", func(t *testing.T) {
+		rootConf, err := config.InitConfig("./testdata/features.yaml")
+		require.NoError(t, err)
+
+		conf, err := rootConf.ForProfile("")
+		require.NoError(t, err)
+		require.NoError(t, conf.Validate())
+
+		// the default client scopes are only manage_configuration
+		conf.Client.Scopes = config.DefaultConfig().Client.Scopes
+		require.EqualError(t, conf.Validate(), scopeErr)
+	})
+
+	t.Run("key rotation without manage_servers in the profile scopes is rejected", func(t *testing.T) {
+		rootConf, err := config.InitConfig("./testdata/features_profile.yaml")
+		require.NoError(t, err)
+
+		on, err := rootConf.ForProfile("on")
+		require.NoError(t, err)
+		require.NoError(t, on.Validate())
+
+		on.Client.Scopes = []string{"manage_configuration"}
+		require.EqualError(t, on.Validate(), scopeErr)
+
+		on.Client = nil
+		require.EqualError(t, on.Validate(), scopeErr)
+	})
+
+	t.Run("scopes are not checked when key rotation is off", func(t *testing.T) {
+		rootConf, err := config.InitConfig("./testdata/features_profile.yaml")
+		require.NoError(t, err)
+
+		conf, err := rootConf.ForProfile("")
+		require.NoError(t, err)
+		require.NotContains(t, conf.Client.Scopes, config.ManageServersScope)
+		require.NoError(t, conf.Validate())
+	})
 }
