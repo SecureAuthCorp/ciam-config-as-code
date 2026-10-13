@@ -54,14 +54,10 @@ func tenantWorkspaces(ctx context.Context, source api.Source, data models.Rfc739
 		}
 	}
 
-	switch servers := data["servers"].(type) {
-	case nil:
-		return nil, nil
-	case map[string]any:
-		return slices.Sorted(maps.Keys(servers)), nil
-	default:
-		return nil, errors.Errorf("unexpected servers type %T in tenant configuration", servers)
-	}
+	// the tenant export is decoded into a generic map, so servers is either a map or null
+	servers, _ := data["servers"].(map[string]any)
+
+	return slices.Sorted(maps.Keys(servers)), nil
 }
 
 // localKeyRotationWorkspaces returns the sorted ids of the workspaces that have a key rotation file in
@@ -119,28 +115,30 @@ func pullKeyRotations(ctx context.Context, app *cac.Application, data models.Rfc
 	return nil
 }
 
+// localKeyRotationWorkspacesFor returns the workspaces a plain push considers: the selected
+// workspace, or in tenant mode every workspace dir with a key rotation file.
+func localKeyRotationWorkspacesFor(dirs []string) ([]string, error) {
+	if rootConfig.Tenant {
+		return localKeyRotationWorkspaces(dirs)
+	}
+
+	return []string{rootConfig.Workspace}, nil
+}
+
+// hasLocalKeyRotation reports whether any of the dirs has a key rotation file for the workspace.
+func hasLocalKeyRotation(dirs []string, wid string) bool {
+	for _, dir := range dirs {
+		if _, err := os.Stat(filepath.Join(dir, "workspaces", wid, keyrotation.FileName)); err == nil {
+			return true
+		}
+	}
+
+	return false
+}
+
 type workspaceKeyRotation struct {
 	wid string
 	cfg *keyrotation.Config
-}
-
-// localKeyRotationWorkspacesFor returns the workspaces with a local key rotation file: the selected
-// workspace, or in tenant mode every workspace dir.
-func localKeyRotationWorkspacesFor(app *cac.Application) ([]string, error) {
-	if app.Config.Storage == nil {
-		return nil, nil
-	}
-
-	wids, err := localKeyRotationWorkspaces(app.Config.Storage.DirPath)
-	if err != nil || rootConfig.Tenant {
-		return wids, err
-	}
-
-	if slices.Contains(wids, rootConfig.Workspace) {
-		return []string{rootConfig.Workspace}, nil
-	}
-
-	return nil, nil
 }
 
 // readKeyRotations reads and validates the local key rotation settings a plain push sends, before
@@ -153,7 +151,7 @@ func readKeyRotations(app *cac.Application) ([]workspaceKeyRotation, error) {
 		return nil, err
 	}
 
-	wids, err := localKeyRotationWorkspacesFor(app)
+	wids, err := localKeyRotationWorkspacesFor(dirStore.Dirs)
 	if err != nil {
 		return nil, err
 	}
@@ -179,13 +177,21 @@ func readKeyRotations(app *cac.Application) ([]workspaceKeyRotation, error) {
 // warnIgnoredKeyRotation warns about local key rotation files a plain push skips because the feature
 // is disabled.
 func warnIgnoredKeyRotation(app *cac.Application) {
-	wids, err := localKeyRotationWorkspacesFor(app)
+	if app.Config.Storage == nil {
+		return
+	}
+
+	wids, err := localKeyRotationWorkspacesFor(app.Config.Storage.DirPath)
 	if err != nil {
 		slog.Debug("failed to look for key rotation files", "error", err)
 		return
 	}
 
 	for _, wid := range wids {
+		if !hasLocalKeyRotation(app.Config.Storage.DirPath, wid) {
+			continue
+		}
+
 		slog.Warn("key_rotation.yaml present but features.key_rotation is disabled; skipping", "workspace", wid)
 	}
 }
