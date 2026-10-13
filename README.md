@@ -46,6 +46,9 @@ profiles: # an optional map of profiles available for use, especially helpful wh
       client_id: fb346c287c4d4e378cbae39aa0cxxxxx
       tenant_id: postmance-stage
       client_secret: invalid_secret
+      scopes: # client replaces the top-level client as a whole, so key rotation needs its scopes here too
+        - manage_configuration
+        - manage_servers
     storage:
       dir_path: "/tmp/other"
     features: # like client and storage, replaces the top-level features for this profile
@@ -53,7 +56,8 @@ profiles: # an optional map of profiles available for use, especially helpful wh
 ```
 
 A profile that does not define `client`, `storage`, `logging` or `features` uses the
-top-level section instead.
+top-level section instead. A profile that inherits a top-level `features.key_rotation: true`
+must either set it to `false` or carry the `manage_servers` scope in its own `client.scopes`.
 
 ## Commands
 
@@ -331,8 +335,9 @@ features:
   does. With `--tenant` it does so for every workspace of the tenant.
 - `push` reads and validates `key_rotation.yaml` before pushing anything, pushes it after
   the configuration, and skips it when the file is absent. With `--tenant` it pushes the
-  file of every workspace directory that has one. `--method` and `--mode` do not apply to
-  it: every key use in the file is replaced.
+  file of every workspace directory that has one, including stale directories without
+  `server.yaml`: their PUT fails with a clear 404 after the import, and rerunning the push
+  is idempotent. `--method` and `--mode` do not apply to it: every key use in the file is replaced.
 - `push --dry-run` writes the settings after the configuration. With `--out -` (stdout)
   or a file, each workspace is a separate YAML document:
 

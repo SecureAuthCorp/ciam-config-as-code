@@ -289,6 +289,16 @@ func TestValidateConfiguration(t *testing.T) {
 		require.EqualError(t, on.Validate(), scopeErr)
 	})
 
+	t.Run("a profile inheriting key rotation with its own client without scopes is rejected", func(t *testing.T) {
+		rootConf, err := config.InitConfig("./testdata/features.yaml")
+		require.NoError(t, err)
+
+		conf, err := rootConf.ForProfile("own_client")
+		require.NoError(t, err)
+		require.True(t, conf.KeyRotationEnabled())
+		require.EqualError(t, conf.Validate(), scopeErr)
+	})
+
 	t.Run("scopes are not checked when key rotation is off", func(t *testing.T) {
 		rootConf, err := config.InitConfig("./testdata/features_profile.yaml")
 		require.NoError(t, err)

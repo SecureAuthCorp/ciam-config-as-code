@@ -1,6 +1,7 @@
 // Package keyrotation holds the automatic key rotation configuration of a workspace. It is not part
-// of models.TreeServer: it lives in its own workspaces/<wid>/key_rotation.yaml file and is only
-// handled by the dedicated pull/push/diff key-rotation subcommands.
+// of models.TreeServer: it lives in its own workspaces/<wid>/key_rotation.yaml file, handled by the
+// dedicated pull/push/diff key-rotation subcommands and, with features.key_rotation on, by the plain
+// pull, push and diff commands.
 package keyrotation
 
 import (
