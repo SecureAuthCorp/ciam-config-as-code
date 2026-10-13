@@ -10,6 +10,8 @@ import (
 	"github.com/cloudentity/acp-client-go/clients/hub/models"
 	kclient "github.com/cloudentity/acp-client-go/clients/system/client/keys"
 	"github.com/cloudentity/cac/internal/cac/api"
+	"github.com/cloudentity/cac/internal/cac/client"
+	"github.com/cloudentity/cac/internal/cac/config"
 	"github.com/cloudentity/cac/internal/cac/keyrotation"
 	"github.com/pkg/errors"
 	"github.com/stretchr/testify/require"
@@ -207,4 +209,30 @@ func TestKeyRotationSideRead(t *testing.T) {
 		_, err := side.read(context.Background(), "demo")
 		require.Error(t, err)
 	})
+}
+
+func TestKeyRotationRemoteAllowed(t *testing.T) {
+	withScopes := func(scopes ...string) *client.Configuration {
+		c := client.DefaultConfig()
+		c.Scopes = scopes
+		return c
+	}
+
+	tcs := []struct {
+		name string
+		conf *config.Configuration
+		want bool
+	}{
+		{"enabled with manage_servers", &config.Configuration{Features: &config.Features{KeyRotation: true}, Client: withScopes("manage_configuration", "manage_servers")}, true},
+		{"enabled without manage_servers", &config.Configuration{Features: &config.Features{KeyRotation: true}, Client: withScopes("manage_configuration")}, false},
+		{"enabled without client", &config.Configuration{Features: &config.Features{KeyRotation: true}}, false},
+		{"disabled with manage_servers", &config.Configuration{Features: &config.Features{}, Client: withScopes("manage_servers")}, false},
+		{"no features", &config.Configuration{Client: withScopes("manage_servers")}, false},
+	}
+
+	for _, tc := range tcs {
+		t.Run(tc.name, func(t *testing.T) {
+			require.Equal(t, tc.want, keyRotationRemoteAllowed(tc.conf))
+		})
+	}
 }

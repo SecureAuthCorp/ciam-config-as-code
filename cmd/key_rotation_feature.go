@@ -17,6 +17,7 @@ import (
 	"github.com/cloudentity/cac/internal/cac"
 	"github.com/cloudentity/cac/internal/cac/api"
 	"github.com/cloudentity/cac/internal/cac/client"
+	"github.com/cloudentity/cac/internal/cac/config"
 	"github.com/cloudentity/cac/internal/cac/keyrotation"
 	"github.com/cloudentity/cac/internal/cac/utils"
 	"github.com/pkg/errors"
@@ -286,7 +287,15 @@ type keyRotationSide struct {
 	tenant api.Source
 }
 
+// keyRotationRemoteAllowed reports whether the keys API may be called with the profile's client: the
+// profile enables features.key_rotation and its client has the manage_servers scope.
+func keyRotationRemoteAllowed(conf *config.Configuration) bool {
+	return conf.KeyRotationEnabled() && conf.Client != nil && slices.Contains(conf.Client.Scopes, config.ManageServersScope)
+}
+
 // newKeyRotationSide resolves a --source or --target value, "[profile@]source-type", like PickSource.
+// It returns nil, after a warning, when the side needs the server but its profile does not allow key
+// rotation.
 func newKeyRotationSide(app *cac.Application, spec string) (*keyRotationSide, error) {
 	var (
 		side                    = &keyRotationSide{}
@@ -317,6 +326,11 @@ func newKeyRotationSide(app *cac.Application, spec string) (*keyRotationSide, er
 	}
 
 	if sourceType == api.SourceRemote || sourceType == api.SourceMerged {
+		if !keyRotationRemoteAllowed(conf) {
+			slog.Warn(fmt.Sprintf("key rotation skipped for profile %s: features.key_rotation disabled or manage_servers scope missing", profile))
+			return nil, nil
+		}
+
 		// the selected profile's client is already initialized; in tenant mode it is a tenant client
 		if conf.Name == app.Config.Name {
 			side.remote, side.tenant = app.KeyRotation, app.Client
@@ -393,12 +407,12 @@ func diffKeyRotations(ctx context.Context, app *cac.Application, result string) 
 		err            error
 	)
 
-	if source, err = newKeyRotationSide(app, diffConfig.Source); err != nil {
-		return "", err
+	if source, err = newKeyRotationSide(app, diffConfig.Source); err != nil || source == nil {
+		return result, err
 	}
 
-	if target, err = newKeyRotationSide(app, diffConfig.Target); err != nil {
-		return "", err
+	if target, err = newKeyRotationSide(app, diffConfig.Target); err != nil || target == nil {
+		return result, err
 	}
 
 	if rootConfig.Tenant {
