@@ -17,30 +17,27 @@ import (
 	"github.com/stretchr/testify/require"
 )
 
-func TestKeyRotationScope(t *testing.T) {
+func TestKeyRotationRequested(t *testing.T) {
 	tcs := []struct {
-		name    string
-		enabled bool
-		filters []string
-		handle  bool
-		normal  bool
-		rest    []string
-		err     string
+		name      string
+		enabled   bool
+		filters   []string
+		requested bool
+		err       string
 	}{
-		{name: "disabled without filters", filters: nil, normal: true, rest: nil},
-		{name: "disabled with other filters", filters: []string{"clients"}, normal: true, rest: []string{"clients"}},
-		{name: "disabled with key_rotation", filters: []string{"clients", "key_rotation"}, err: "--filter key_rotation requires features.key_rotation: true"},
-		{name: "enabled without filters", enabled: true, filters: nil, handle: true, normal: true, rest: nil},
-		{name: "enabled with other filters", enabled: true, filters: []string{"clients"}, normal: true, rest: []string{"clients"}},
-		{name: "enabled with key_rotation only", enabled: true, filters: []string{"key_rotation"}, handle: true, rest: []string{}},
-		{name: "enabled with key_rotation and others", enabled: true, filters: []string{"key_rotation", "clients"}, handle: true, normal: true, rest: []string{"clients"}},
+		{name: "disabled without filters"},
+		{name: "disabled with key_rotation", filters: []string{"key_rotation"}, err: "--filter key_rotation requires features.key_rotation: true"},
+		{name: "disabled with other filters", filters: []string{"clients"}},
+		{name: "disabled with mixed filters", filters: []string{"clients", "key_rotation"}, err: "--filter key_rotation requires features.key_rotation: true"},
+		{name: "enabled without filters", enabled: true, requested: true},
+		{name: "enabled with key_rotation", enabled: true, filters: []string{"key_rotation"}, requested: true},
+		{name: "enabled with other filters", enabled: true, filters: []string{"clients"}},
+		{name: "enabled with mixed filters", enabled: true, filters: []string{"key_rotation", "clients"}, requested: true},
 	}
 
 	for _, tc := range tcs {
 		t.Run(tc.name, func(t *testing.T) {
-			filters := append([]string(nil), tc.filters...)
-
-			handle, normal, rest, err := keyRotationScope(tc.enabled, filters)
+			requested, err := keyRotationRequested(tc.enabled, tc.filters)
 
 			if tc.err != "" {
 				require.EqualError(t, err, tc.err)
@@ -48,12 +45,17 @@ func TestKeyRotationScope(t *testing.T) {
 			}
 
 			require.NoError(t, err)
-			require.Equal(t, tc.handle, handle, "handle")
-			require.Equal(t, tc.normal, normal, "normal")
-			require.Equal(t, tc.rest, rest)
-			require.Equal(t, tc.filters, filters, "the input filters must not be modified")
+			require.Equal(t, tc.requested, requested)
 		})
 	}
+}
+
+func TestKeyRotationOnly(t *testing.T) {
+	require.False(t, keyRotationOnly(nil))
+	require.False(t, keyRotationOnly([]string{"clients"}))
+	require.False(t, keyRotationOnly([]string{"key_rotation", "clients"}))
+	require.True(t, keyRotationOnly([]string{"key_rotation"}))
+	require.True(t, keyRotationOnly([]string{"key_rotation", "key_rotation"}))
 }
 
 func TestAppendKeyRotationDiff(t *testing.T) {

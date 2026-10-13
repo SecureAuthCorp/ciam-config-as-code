@@ -29,27 +29,25 @@ Examples:
   cac --config ./cac.yaml --profile dev --tenant pull`,
 		RunE: func(cmd *cobra.Command, args []string) error {
 			var (
-				app     *cac.Application
-				data    models.Rfc7396PatchOperation
-				handle  bool
-				normal  bool
-				filters []string
-				err     error
+				app    *cac.Application
+				data   models.Rfc7396PatchOperation
+				handle bool
+				err    error
 			)
 
 			if app, err = cac.InitApp(rootConfig.ConfigPath, rootConfig.Profile, rootConfig.Tenant); err != nil {
 				return err
 			}
 
-			if handle, normal, filters, err = keyRotationScope(app.Config.KeyRotationEnabled(), pullConfig.Filters); err != nil {
+			if handle, err = keyRotationRequested(app.Config.KeyRotationEnabled(), pullConfig.Filters); err != nil {
 				return err
 			}
 
-			if normal {
+			if !keyRotationOnly(pullConfig.Filters) {
 				slog.
 					With("workspace", rootConfig.Workspace).
 					With("tenant", rootConfig.Tenant).
-					With("filters", filters).
+					With("filters", pullConfig.Filters).
 					With("config", rootConfig.ConfigPath).
 					Info("Pulling configuration")
 
@@ -57,7 +55,7 @@ Examples:
 					cmd.Context(),
 					api.WithWorkspace(rootConfig.Workspace),
 					api.WithSecrets(pullConfig.WithSecrets),
-					api.WithFilters(filters),
+					api.WithFilters(pullConfig.Filters),
 				); err != nil {
 					return err
 				}

@@ -39,19 +39,17 @@ Examples:
   cac --config ./cac.yaml --profile dev --workspace demo push --method patch --filter clients,services`,
 		RunE: func(cmd *cobra.Command, args []string) error {
 			var (
-				app     *cac.Application
-				krs     []workspaceKeyRotation
-				handle  bool
-				normal  bool
-				filters []string
-				err     error
+				app    *cac.Application
+				krs    []workspaceKeyRotation
+				handle bool
+				err    error
 			)
 
 			if app, err = cac.InitApp(rootConfig.ConfigPath, rootConfig.Profile, rootConfig.Tenant); err != nil {
 				return err
 			}
 
-			if handle, normal, filters, err = keyRotationScope(app.Config.KeyRotationEnabled(), pushConfig.Filters); err != nil {
+			if handle, err = keyRotationRequested(app.Config.KeyRotationEnabled(), pushConfig.Filters); err != nil {
 				return err
 			}
 
@@ -64,14 +62,14 @@ Examples:
 				warnIgnoredKeyRotation(app)
 			}
 
-			if normal {
-				if err = pushConfiguration(cmd.Context(), app, filters); err != nil {
+			if !keyRotationOnly(pushConfig.Filters) {
+				if err = pushConfiguration(cmd.Context(), app, pushConfig.Filters); err != nil {
 					return err
 				}
 			}
 
 			if handle {
-				return pushKeyRotations(cmd.Context(), app, krs, normal)
+				return pushKeyRotations(cmd.Context(), app, krs)
 			}
 
 			return nil

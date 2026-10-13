@@ -27,20 +27,22 @@ import (
 // keyRotationFilter is the --filter value that selects key rotation in plain pull, push and diff.
 const keyRotationFilter = "key_rotation"
 
-// keyRotationScope decides how a plain pull, push or diff treats key rotation. handle reports whether
-// key rotation is handled: the feature is enabled and --filter is either empty or names key_rotation.
-// normal reports whether the regular configuration pipeline runs; it is skipped when key_rotation is
-// the only filter, since an empty filtered configuration would otherwise be pulled, diffed or pushed.
-// rest are the filters left for the regular pipeline.
-func keyRotationScope(enabled bool, filters []string) (handle, normal bool, rest []string, err error) {
-	rest = slices.DeleteFunc(slices.Clone(filters), func(f string) bool { return f == keyRotationFilter })
-	requested := len(rest) < len(filters)
-
-	if requested && !enabled {
-		return false, false, nil, errors.New("--filter key_rotation requires features.key_rotation: true")
+// keyRotationRequested reports whether a plain pull, push or diff also handles key rotation: the
+// feature is enabled and --filter is empty or names key_rotation. The regular pipeline ignores the
+// key_rotation filter, as it does any filter naming no configuration key.
+func keyRotationRequested(enabled bool, filters []string) (bool, error) {
+	if !enabled && slices.Contains(filters, keyRotationFilter) {
+		return false, errors.New("--filter key_rotation requires features.key_rotation: true")
 	}
 
-	return enabled && (len(filters) == 0 || requested), len(filters) == 0 || len(rest) > 0, rest, nil
+	return enabled && (len(filters) == 0 || slices.Contains(filters, keyRotationFilter)), nil
+}
+
+// keyRotationOnly reports whether --filter selects key rotation alone. Pull and push then skip the
+// regular pipeline, since its empty result is not a no-op: a pull rewrites server.yaml and an import
+// resets the workspace settings.
+func keyRotationOnly(filters []string) bool {
+	return len(filters) > 0 && !slices.ContainsFunc(filters, func(f string) bool { return f != keyRotationFilter })
 }
 
 // tenantWorkspaces returns the sorted ids of the workspaces in a tenant configuration. When data has
@@ -196,11 +198,11 @@ func warnIgnoredKeyRotation(app *cac.Application) {
 	}
 }
 
-// pushKeyRotations pushes key rotation after a plain push, or writes it next to the dry-run output.
-// normal reports whether the regular push ran and so wrote dry-run output first.
-func pushKeyRotations(ctx context.Context, app *cac.Application, krs []workspaceKeyRotation, normal bool) error {
+// pushKeyRotations pushes key rotation after a plain push, or writes it next to the dry-run output,
+// appending to the regular dry-run output file unless the regular push was skipped.
+func pushKeyRotations(ctx context.Context, app *cac.Application, krs []workspaceKeyRotation) error {
 	if pushConfig.DryRun {
-		dryRun := &keyRotationDryRun{out: pushConfig.Out, stdout: os.Stdout, appendFile: normal}
+		dryRun := &keyRotationDryRun{out: pushConfig.Out, stdout: os.Stdout, appendFile: !keyRotationOnly(pushConfig.Filters)}
 
 		for _, kr := range krs {
 			if err := dryRun.write(kr.wid, kr.cfg); err != nil {

@@ -40,14 +40,12 @@ Examples:
       --source local --target remote --out diff.txt`,
 		RunE: func(cmd *cobra.Command, args []string) error {
 			var (
-				app     *cac.Application
-				result  string
-				source  api.Source
-				target  api.Source
-				handle  bool
-				normal  bool
-				filters []string
-				err     error
+				app    *cac.Application
+				result string
+				source api.Source
+				target api.Source
+				handle bool
+				err    error
 			)
 
 			slog.
@@ -66,30 +64,28 @@ Examples:
 				return err
 			}
 
-			if handle, normal, filters, err = keyRotationScope(app.Config.KeyRotationEnabled(), diffConfig.Filters); err != nil {
+			if handle, err = keyRotationRequested(app.Config.KeyRotationEnabled(), diffConfig.Filters); err != nil {
 				return err
 			}
 
-			if normal {
-				if source, err = app.PickSource(diffConfig.Source, rootConfig.Tenant); err != nil {
-					return err
-				}
+			if source, err = app.PickSource(diffConfig.Source, rootConfig.Tenant); err != nil {
+				return err
+			}
 
-				if target, err = app.PickSource(diffConfig.Target, rootConfig.Tenant); err != nil {
-					return err
-				}
+			if target, err = app.PickSource(diffConfig.Target, rootConfig.Tenant); err != nil {
+				return err
+			}
 
-				slog.Info("Comparing configurations", "source", source, "target", target)
+			slog.Info("Comparing configurations", "source", source, "target", target)
 
-				if result, err = diff.Diff(cmd.Context(), source, target, rootConfig.Workspace,
-					diff.Colorize(diffConfig.Colors),
-					diff.OnlyPresent(diffConfig.OnlyPresent),
-					diff.Filters(filters...),
-					diff.WithSecrets(diffConfig.WithSecrets),
-					diff.FilterVolatileFields(diffConfig.FilterVolatile),
-				); err != nil {
-					return err
-				}
+			if result, err = diff.Diff(cmd.Context(), source, target, rootConfig.Workspace,
+				diff.Colorize(diffConfig.Colors),
+				diff.OnlyPresent(diffConfig.OnlyPresent),
+				diff.Filters(diffConfig.Filters...),
+				diff.WithSecrets(diffConfig.WithSecrets),
+				diff.FilterVolatileFields(diffConfig.FilterVolatile),
+			); err != nil {
+				return err
 			}
 
 			if handle {
