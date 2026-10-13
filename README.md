@@ -36,6 +36,8 @@ client:
     - read_configuration # alternative scope that can be used only to read configuration
 storage:
   dir_path: "/tmp/data" # path to local configuration; default: "data"
+features: # optional behaviour of plain pull, push and diff; all default to false
+  key_rotation: false # also handle workspace key rotation, see "Managing key rotation"
 
 profiles: # an optional map of profiles available for use, especially helpful when you want to compare multiple configurations
   stage: # each profile support same configuration as root (aka default profile)
@@ -46,7 +48,12 @@ profiles: # an optional map of profiles available for use, especially helpful wh
       client_secret: invalid_secret
     storage:
       dir_path: "/tmp/other"
+    features: # like client and storage, replaces the top-level features for this profile
+      key_rotation: true
 ```
+
+A profile that does not define `client`, `storage`, `logging` or `features` uses the
+top-level section instead.
 
 ## Commands
 
@@ -243,11 +250,13 @@ map[string]any{
 
 Automatic key rotation settings of a workspace live behind a dedicated API and are
 managed with the `key-rotation` subcommand of `pull`, `push`, and `diff`, for the
-workspace selected with `--workspace` (`--tenant` is rejected). The subcommands do not
-take the parent commands' own flags such as `--filter`, `--method`, or `--source`; only
-`push key-rotation` keeps `--dry-run` and `--out`, and `diff key-rotation` keeps `--out`
-and `--colors`. Plain `pull`, `push`, and `diff` never read or write these settings.
-They are stored in `workspaces/<workspace-id>/key_rotation.yaml`. With several storage
+workspace selected with `--workspace` (`--tenant` is rejected), or by the plain commands
+when [`features.key_rotation`](#key-rotation-in-plain-pull-push-and-diff) is enabled.
+The subcommands do not take the parent commands' own flags such as `--filter`,
+`--method`, or `--source`; only `push key-rotation` keeps `--dry-run` and `--out`, and
+`diff key-rotation` keeps `--out` and `--colors`. They work whether the feature is
+enabled or not.
+The settings are stored in `workspaces/<workspace-id>/key_rotation.yaml`. With several storage
 directories, the file is taken whole from the first directory that has it; files are
 not merged across directories:
 
@@ -276,8 +285,8 @@ cac --config ./cac.yaml --profile dev --workspace demo push key-rotation
 cac --config ./cac.yaml --profile dev --workspace demo diff key-rotation
 ```
 
-The system workspace client used by cac needs the `manage_servers` scope for these
-subcommands, in addition to `manage_configuration`: add it to `client.scopes` in the
+The system workspace client used by cac needs the `manage_servers` scope for key
+rotation, in addition to `manage_configuration`: add it to `client.scopes` in the
 [configuration](#configuration).
 
 Constraints:
@@ -297,6 +306,72 @@ Constraints:
 
 > **Note:** `push key-rotation` validates every cron before any API call,
 > and `--dry-run` prints the settings that would be sent instead of pushing them.
+
+#### Key rotation in plain pull, push and diff
+
+With `features.key_rotation: true`, at the top level or in the selected profile, the
+plain `pull`, `push`, and `diff` handle key rotation too, so a single `cac diff` or
+`cac push`, for example in CI, covers it. cac then refuses to start unless
+`client.scopes` includes `manage_servers`:
+`features.key_rotation requires the manage_servers scope in client.scopes`.
+
+```yaml
+client:
+  scopes:
+    - manage_configuration
+    - manage_servers
+features:
+  key_rotation: true
+```
+
+- Key rotation is handled when `--filter` is not given or includes `key_rotation`.
+  `--filter key_rotation` alone handles only key rotation and skips the rest of the
+  configuration; `--filter clients,key_rotation` handles both.
+- `pull` writes `key_rotation.yaml` after the configuration, as `pull key-rotation`
+  does. With `--tenant` it does so for every workspace of the tenant.
+- `push` reads and validates `key_rotation.yaml` before pushing anything, pushes it after
+  the configuration, and skips it when the file is absent. With `--tenant` it pushes the
+  file of every workspace directory that has one. `--method` and `--mode` do not apply to
+  it: every key use in the file is replaced.
+- `push --dry-run` writes the settings after the configuration. With `--out -` (stdout)
+  or a file, each workspace is a separate YAML document:
+
+  ```yaml
+  # ... configuration ...
+  ---
+  # key_rotation (demo)
+  sig:
+    enabled: true
+    cron: 0 0 1 * *
+  ```
+
+  With `--out` set to an existing directory, the settings go to
+  `<out>/workspaces/<workspace-id>/key_rotation.yaml`.
+- `diff` appends a section for each workspace whose settings differ, after the
+  configuration diff and in the same format, honoring `--out` and `--colors`:
+
+  ```
+  --- key_rotation (demo)
+    models.Rfc7396PatchOperation{
+    	"sig": map[string]any{
+  - 		"cron":    string("@monthly"),
+  + 		"cron":    string("0 0 1 * *"),
+    		"enabled": bool(true),
+    	},
+    }
+  ```
+
+  `--source` and `--target` map to key rotation as follows: `local` reads
+  `key_rotation.yaml`, `remote` reads the server, and `merged` reads the local file,
+  falling back to the server when the workspace has none. As with `diff key-rotation`,
+  uses missing from the source are ignored. With `--tenant` the source's workspaces
+  are compared: the local workspace directories that have the file for `local`, the
+  workspaces of the tenant for `remote`, and both for `merged`.
+
+With the feature disabled, `--filter key_rotation` fails with
+`--filter key_rotation requires features.key_rotation: true`, plain `pull` and `diff`
+ignore key rotation, and plain `push` warns about each `key_rotation.yaml` it skips:
+`key_rotation.yaml present but features.key_rotation is disabled; skipping`.
 
 ## Templates
 
