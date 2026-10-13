@@ -5,23 +5,13 @@ import (
 	"testing"
 	"time"
 
-	"github.com/cloudentity/cac/internal/cac/diff"
 	"github.com/cloudentity/cac/internal/cac/keyrotation"
-	"github.com/cloudentity/cac/internal/cac/utils"
 	"github.com/go-openapi/strfmt"
 	"github.com/stretchr/testify/require"
 )
 
 func keyRotationDiff(t *testing.T, local, remote *keyrotation.Config) string {
-	source, target := keyRotationDiffConfigs(local, remote)
-
-	sourcePatch, err := utils.FromModelToPatch(source)
-	require.NoError(t, err)
-
-	targetPatch, err := utils.FromModelToPatch(target)
-	require.NoError(t, err)
-
-	result, err := diff.Tree(sourcePatch, targetPatch, diff.Colorize(false))
+	result, err := keyRotationTreeDiff(local, remote, false)
 	require.NoError(t, err)
 
 	return result

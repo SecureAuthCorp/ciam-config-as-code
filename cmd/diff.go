@@ -40,11 +40,14 @@ Examples:
       --source local --target remote --out diff.txt`,
 		RunE: func(cmd *cobra.Command, args []string) error {
 			var (
-				app    *cac.Application
-				result string
-				source api.Source
-				target api.Source
-				err    error
+				app     *cac.Application
+				result  string
+				source  api.Source
+				target  api.Source
+				handle  bool
+				normal  bool
+				filters []string
+				err     error
 			)
 
 			slog.
@@ -63,24 +66,36 @@ Examples:
 				return err
 			}
 
-			if source, err = app.PickSource(diffConfig.Source, rootConfig.Tenant); err != nil {
+			if handle, normal, filters, err = keyRotationScope(app.Config.KeyRotationEnabled(), diffConfig.Filters); err != nil {
 				return err
 			}
 
-			if target, err = app.PickSource(diffConfig.Target, rootConfig.Tenant); err != nil {
-				return err
+			if normal {
+				if source, err = app.PickSource(diffConfig.Source, rootConfig.Tenant); err != nil {
+					return err
+				}
+
+				if target, err = app.PickSource(diffConfig.Target, rootConfig.Tenant); err != nil {
+					return err
+				}
+
+				slog.Info("Comparing configurations", "source", source, "target", target)
+
+				if result, err = diff.Diff(cmd.Context(), source, target, rootConfig.Workspace,
+					diff.Colorize(diffConfig.Colors),
+					diff.OnlyPresent(diffConfig.OnlyPresent),
+					diff.Filters(filters...),
+					diff.WithSecrets(diffConfig.WithSecrets),
+					diff.FilterVolatileFields(diffConfig.FilterVolatile),
+				); err != nil {
+					return err
+				}
 			}
 
-			slog.Info("Comparing configurations", "source", source, "target", target)
-
-			if result, err = diff.Diff(cmd.Context(), source, target, rootConfig.Workspace,
-				diff.Colorize(diffConfig.Colors),
-				diff.OnlyPresent(diffConfig.OnlyPresent),
-				diff.Filters(diffConfig.Filters...),
-				diff.WithSecrets(diffConfig.WithSecrets),
-				diff.FilterVolatileFields(diffConfig.FilterVolatile),
-			); err != nil {
-				return err
+			if handle {
+				if result, err = diffKeyRotations(cmd.Context(), app, result); err != nil {
+					return err
+				}
 			}
 
 			return writeDiffResult(result)
@@ -139,6 +154,7 @@ Workspace resources: clients, idps, claims, custom_apps, gateways, policies, pol
                      ciba (alias of ciba_authentication_service)
 Tenant resources:    pools, schemas, mfa_methods, themes, servers
 Reserved:            root (only root-level tenant/workspace config, excluding nested resources)
+Key rotation:        key_rotation (workspace key rotation settings; requires features.key_rotation: true)
 Examples:
   --filter clients
   --filter clients,idps,policies
