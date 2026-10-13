@@ -8,8 +8,10 @@ import (
 	"testing"
 
 	"github.com/cloudentity/acp-client-go/clients/hub/models"
+	kclient "github.com/cloudentity/acp-client-go/clients/system/client/keys"
 	"github.com/cloudentity/cac/internal/cac/api"
 	"github.com/cloudentity/cac/internal/cac/keyrotation"
+	"github.com/pkg/errors"
 	"github.com/stretchr/testify/require"
 )
 
@@ -176,5 +178,33 @@ func TestTenantWorkspaces(t *testing.T) {
 		wids, err := tenantWorkspaces(context.Background(), &fakeSource{}, models.Rfc7396PatchOperation{"servers": nil})
 		require.NoError(t, err)
 		require.Empty(t, wids)
+	})
+}
+
+type fakeKeyRotationReader struct {
+	cfg *keyrotation.Config
+	err error
+}
+
+func (f fakeKeyRotationReader) Read(context.Context, string) (*keyrotation.Config, error) {
+	return f.cfg, f.err
+}
+
+func TestKeyRotationSideRead(t *testing.T) {
+	t.Run("a workspace missing remotely has no settings", func(t *testing.T) {
+		side := &keyRotationSide{remote: fakeKeyRotationReader{
+			err: errors.Wrap(kclient.NewGetAutomaticKeyRotationNotFound(), "failed to read key rotation"),
+		}}
+
+		cfg, err := side.read(context.Background(), "missing")
+		require.NoError(t, err)
+		require.Nil(t, cfg)
+	})
+
+	t.Run("other remote errors fail", func(t *testing.T) {
+		side := &keyRotationSide{remote: fakeKeyRotationReader{err: kclient.NewGetAutomaticKeyRotationForbidden()}}
+
+		_, err := side.read(context.Background(), "demo")
+		require.Error(t, err)
 	})
 }

@@ -18,7 +18,7 @@ func keyRotationDiff(t *testing.T, local, remote *keyrotation.Config) string {
 }
 
 func TestKeyRotationDiffConfigs(t *testing.T) {
-	t.Run("starting_from is cleared on local only", func(t *testing.T) {
+	t.Run("starting_from is cleared on both sides", func(t *testing.T) {
 		startingFrom := strfmt.DateTime(time.Date(2030, 1, 1, 0, 0, 0, 0, time.UTC))
 
 		source, target := keyRotationDiffConfigs(
@@ -27,7 +27,7 @@ func TestKeyRotationDiffConfigs(t *testing.T) {
 		)
 
 		require.Equal(t, &keyrotation.Config{Sig: &keyrotation.Rotation{Enabled: true, Cron: "0 0 1 * *"}}, source)
-		require.Equal(t, &startingFrom, target.Sig.StartingFrom)
+		require.Equal(t, &keyrotation.Config{Sig: &keyrotation.Rotation{Enabled: true, Cron: "0 0 1 * *"}}, target)
 	})
 
 	t.Run("remote use absent locally is dropped", func(t *testing.T) {

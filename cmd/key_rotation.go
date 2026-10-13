@@ -3,6 +3,7 @@ package cmd
 import (
 	"context"
 	"os"
+	"slices"
 
 	"github.com/cloudentity/acp-client-go/clients/hub/models"
 	"github.com/cloudentity/cac/internal/cac"
@@ -230,7 +231,7 @@ func keyRotationDiffConfigs(local, remote *keyrotation.Config) (source, target *
 	}
 
 	// the server never echoes starting_from back, so it would always show up as a difference
-	for _, use := range local.Uses() {
+	for _, use := range slices.Concat(local.Uses(), remote.Uses()) {
 		use.Rotation.StartingFrom = nil
 	}
 

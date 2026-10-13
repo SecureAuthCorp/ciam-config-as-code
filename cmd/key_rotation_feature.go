@@ -13,6 +13,7 @@ import (
 	"strings"
 
 	"github.com/cloudentity/acp-client-go/clients/hub/models"
+	"github.com/cloudentity/acp-client-go/clients/system/client/keys"
 	"github.com/cloudentity/cac/internal/cac"
 	"github.com/cloudentity/cac/internal/cac/api"
 	"github.com/cloudentity/cac/internal/cac/client"
@@ -270,12 +271,17 @@ func keyRotationDryRunSection(wid string, cfg *keyrotation.Config) ([]byte, erro
 	return append(fmt.Appendf(nil, "---\n# key_rotation (%s)\n", wid), bts...), nil
 }
 
+// keyRotationReader reads the key rotation settings of a workspace from the server.
+type keyRotationReader interface {
+	Read(ctx context.Context, wid string) (*keyrotation.Config, error)
+}
+
 // keyRotationSide reads key rotation for one side of a plain diff, mapping the diff source types:
 // local reads the profile's storage dirs, remote the profile's server, and merged the local file,
 // falling back to the server when the workspace has none.
 type keyRotationSide struct {
 	local  *keyrotation.DirStore
-	remote *client.KeyRotationAPIStore
+	remote keyRotationReader
 	// tenant lists the workspaces of a remote side in tenant mode
 	tenant api.Source
 }
@@ -339,7 +345,15 @@ func (s *keyRotationSide) read(ctx context.Context, wid string) (*keyrotation.Co
 		}
 	}
 
-	return s.remote.Read(ctx, wid)
+	cfg, err := s.remote.Read(ctx, wid)
+
+	// a workspace the target lacks has no settings, so it diffs as all-source like the configuration
+	var notFound *keys.GetAutomaticKeyRotationNotFound
+	if errors.As(err, &notFound) {
+		return nil, nil
+	}
+
+	return cfg, err
 }
 
 // workspaces lists the workspaces the side has key rotation for, in tenant mode.
