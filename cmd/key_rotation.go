@@ -1,13 +1,9 @@
 package cmd
 
 import (
-	"context"
 	"os"
-	"slices"
 
-	"github.com/cloudentity/acp-client-go/clients/hub/models"
 	"github.com/cloudentity/cac/internal/cac"
-	"github.com/cloudentity/cac/internal/cac/diff"
 	"github.com/cloudentity/cac/internal/cac/keyrotation"
 	"github.com/cloudentity/cac/internal/cac/utils"
 	"github.com/pkg/errors"
@@ -17,17 +13,31 @@ import (
 
 // newKeyRotationCmd builds the key-rotation subcommand of pull, push or diff. It operates on the
 // workspace selected with the root --workspace flag.
-func newKeyRotationCmd(short string, run func(cmd *cobra.Command, wid string) error) *cobra.Command {
+func newKeyRotationCmd(short string, run func(cmd *cobra.Command, svc *keyrotation.Service, wid string) error) *cobra.Command {
 	return &cobra.Command{
 		Use:   "key-rotation",
 		Short: short,
 		Args:  cobra.NoArgs,
 		RunE: func(cmd *cobra.Command, args []string) error {
+			var (
+				app *cac.Application
+				svc *keyrotation.Service
+				err error
+			)
+
 			if rootConfig.Tenant {
 				return errors.New("--tenant does not apply to key-rotation; select a workspace with --workspace")
 			}
 
-			return run(cmd, rootConfig.Workspace)
+			if app, err = cac.InitApp(rootConfig.ConfigPath, rootConfig.Profile, false); err != nil {
+				return err
+			}
+
+			if svc, err = keyRotationService(app); err != nil {
+				return err
+			}
+
+			return run(cmd, svc, rootConfig.Workspace)
 		},
 	}
 }
@@ -38,106 +48,33 @@ func init() {
 	diffCmd.AddCommand(newKeyRotationCmd("Compare local and remote automatic key rotation settings of the workspace", diffKeyRotation))
 }
 
-func pullKeyRotation(cmd *cobra.Command, wid string) error {
-	var (
-		app *cac.Application
-		err error
-	)
-
-	if app, err = cac.InitApp(rootConfig.ConfigPath, rootConfig.Profile, false); err != nil {
-		return err
-	}
-
-	dirStore, err := keyRotationDirStore(app)
-	if err != nil {
-		return err
-	}
-
-	return pullWorkspaceKeyRotation(cmd.Context(), app, dirStore, wid)
-}
-
-// pullWorkspaceKeyRotation writes the remote key rotation settings of the workspace to dirStore. It
-// writes nothing when the workspace has none configured.
-func pullWorkspaceKeyRotation(ctx context.Context, app *cac.Application, dirStore *keyrotation.DirStore, wid string) error {
-	var (
-		cfg *keyrotation.Config
-		err error
-	)
-
-	slog.With("workspace", wid).Info("Pulling key rotation")
-
-	if cfg, err = app.KeyRotation.Read(ctx, wid); err != nil {
-		return err
-	}
-
-	if cfg == nil {
-		slog.Info("No key rotation configured", "workspace", wid)
-		return nil
-	}
-
-	if err = dirStore.Write(wid, cfg); err != nil {
-		return err
-	}
-
-	slog.Info("Pulled key rotation", "workspace", wid)
-
-	return nil
-}
-
-func keyRotationDirStore(app *cac.Application) (*keyrotation.DirStore, error) {
+// keyRotationService builds the key rotation service of the selected profile: its storage dirs and
+// its server.
+func keyRotationService(app *cac.Application) (*keyrotation.Service, error) {
 	if app.Config.Storage == nil || len(app.Config.Storage.DirPath) == 0 {
 		return nil, errors.New("no storage directories configured for the selected profile")
 	}
 
-	return keyrotation.NewDirStore(app.Config.Storage.DirPath), nil
+	return keyrotation.NewService(keyrotation.NewDirStore(app.Config.Storage.DirPath), app.KeyRotation), nil
 }
 
-// readKeyRotation reads and validates the local key rotation settings of the workspace. It returns
-// nil when the workspace has none.
-func readKeyRotation(dirStore *keyrotation.DirStore, wid string) (*keyrotation.Config, error) {
-	cfg, err := dirStore.Read(wid)
-	if err != nil {
-		return nil, errors.Wrap(err, "failed to read local key rotation")
-	}
-
-	if cfg == nil {
-		return nil, nil
-	}
-
-	if err = cfg.Validate(); err != nil {
-		return nil, errors.Wrapf(err, "failed to validate key rotation of workspace %s", wid)
-	}
-
-	return cfg, nil
+func pullKeyRotation(cmd *cobra.Command, svc *keyrotation.Service, wid string) error {
+	return svc.Pull(cmd.Context(), []string{wid})
 }
 
-func pushKeyRotation(cmd *cobra.Command, wid string) error {
-	var (
-		app *cac.Application
-		cfg *keyrotation.Config
-		err error
-	)
-
-	if app, err = cac.InitApp(rootConfig.ConfigPath, rootConfig.Profile, false); err != nil {
-		return err
-	}
-
-	dirStore, err := keyRotationDirStore(app)
+func pushKeyRotation(cmd *cobra.Command, svc *keyrotation.Service, wid string) error {
+	items, err := svc.ReadAll([]string{wid})
 	if err != nil {
 		return err
 	}
 
-	if cfg, err = readKeyRotation(dirStore, wid); err != nil {
-		return err
-	}
-
-	if cfg == nil {
+	if len(items) == 0 {
 		slog.Info("No key rotation configuration to push", "workspace", wid)
 		return nil
 	}
 
 	if pushConfig.DryRun {
-		bts, err := utils.ToYaml(cfg)
+		bts, err := utils.ToYaml(items[0].Config)
 		if err != nil {
 			return errors.Wrap(err, "failed to marshal key rotation")
 		}
@@ -153,96 +90,14 @@ func pushKeyRotation(cmd *cobra.Command, wid string) error {
 		return nil
 	}
 
-	return pushWorkspaceKeyRotation(cmd.Context(), app, wid, cfg)
+	return svc.Push(cmd.Context(), items)
 }
 
-func pushWorkspaceKeyRotation(ctx context.Context, app *cac.Application, wid string, cfg *keyrotation.Config) error {
-	if err := app.KeyRotation.Write(ctx, wid, cfg); err != nil {
-		return err
-	}
-
-	slog.Info("Pushed key rotation", "workspace", wid, "uses", len(cfg.Uses()))
-
-	return nil
-}
-
-func diffKeyRotation(cmd *cobra.Command, wid string) error {
-	var (
-		app           *cac.Application
-		local, remote *keyrotation.Config
-		result        string
-		err           error
-	)
-
-	if app, err = cac.InitApp(rootConfig.ConfigPath, rootConfig.Profile, false); err != nil {
-		return err
-	}
-
-	dirStore, err := keyRotationDirStore(app)
+func diffKeyRotation(cmd *cobra.Command, svc *keyrotation.Service, wid string) error {
+	result, err := svc.Diff(cmd.Context(), wid, diffConfig.Colors)
 	if err != nil {
 		return err
 	}
 
-	if local, err = dirStore.Read(wid); err != nil {
-		return errors.Wrap(err, "failed to read local key rotation")
-	}
-
-	if remote, err = app.KeyRotation.Read(cmd.Context(), wid); err != nil {
-		return err
-	}
-
-	if result, err = keyRotationTreeDiff(local, remote, diffConfig.Colors); err != nil {
-		return err
-	}
-
 	return writeDiffResult(result)
-}
-
-// keyRotationTreeDiff renders the difference between the source and target settings the way the
-// configuration diff does, after keyRotationDiffConfigs. It modifies its arguments.
-func keyRotationTreeDiff(source, target *keyrotation.Config, colors bool) (string, error) {
-	var (
-		sourcePatch, targetPatch models.Rfc7396PatchOperation
-		err                      error
-	)
-
-	source, target = keyRotationDiffConfigs(source, target)
-
-	if sourcePatch, err = utils.FromModelToPatch(source); err != nil {
-		return "", errors.Wrap(err, "failed to convert source key rotation")
-	}
-
-	if targetPatch, err = utils.FromModelToPatch(target); err != nil {
-		return "", errors.Wrap(err, "failed to convert target key rotation")
-	}
-
-	return diff.Tree(sourcePatch, targetPatch, diff.Colorize(colors))
-}
-
-// keyRotationDiffConfigs prepares the local and remote configurations for comparison. It modifies
-// its arguments and replaces nil with an empty configuration.
-func keyRotationDiffConfigs(local, remote *keyrotation.Config) (source, target *keyrotation.Config) {
-	if local == nil {
-		local = &keyrotation.Config{}
-	}
-
-	if remote == nil {
-		remote = &keyrotation.Config{}
-	}
-
-	// the server never echoes starting_from back, so it would always show up as a difference
-	for _, use := range slices.Concat(local.Uses(), remote.Uses()) {
-		use.Rotation.StartingFrom = nil
-	}
-
-	// push never removes a use that is absent locally, so diff previews only what push would change
-	if local.Sig == nil {
-		remote.Sig = nil
-	}
-
-	if local.Enc == nil {
-		remote.Enc = nil
-	}
-
-	return local, remote
 }

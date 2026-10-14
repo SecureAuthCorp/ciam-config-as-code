@@ -6,6 +6,7 @@ import (
 	"github.com/cloudentity/acp-client-go/clients/hub/models"
 	"github.com/cloudentity/cac/internal/cac"
 	"github.com/cloudentity/cac/internal/cac/api"
+	"github.com/cloudentity/cac/internal/cac/keyrotation"
 	"github.com/cloudentity/cac/internal/cac/storage"
 	"github.com/pkg/errors"
 	"github.com/spf13/cobra"
@@ -40,7 +41,8 @@ Examples:
 		RunE: func(cmd *cobra.Command, args []string) error {
 			var (
 				app    *cac.Application
-				krs    []workspaceKeyRotation
+				svc    *keyrotation.Service
+				krs    []keyrotation.WorkspaceConfig
 				handle bool
 				err    error
 			)
@@ -55,7 +57,11 @@ Examples:
 
 			// key rotation is read and validated up front, so an invalid file fails before anything is pushed
 			if handle {
-				if krs, err = readKeyRotations(app); err != nil {
+				if svc, err = keyRotationService(app); err != nil {
+					return err
+				}
+
+				if krs, err = readKeyRotations(svc); err != nil {
 					return err
 				}
 			} else if !app.Config.KeyRotationEnabled() {
@@ -69,7 +75,7 @@ Examples:
 			}
 
 			if handle {
-				return pushKeyRotations(cmd.Context(), app, krs)
+				return pushKeyRotations(cmd.Context(), svc, krs)
 			}
 
 			return nil

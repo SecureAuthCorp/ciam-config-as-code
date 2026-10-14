@@ -1,0 +1,163 @@
+package keyrotation
+
+import (
+	"context"
+	"maps"
+	"slices"
+
+	"github.com/cloudentity/acp-client-go/clients/hub/models"
+	"github.com/cloudentity/cac/internal/cac/api"
+	"github.com/pkg/errors"
+	"golang.org/x/exp/slog"
+)
+
+// Reader reads the key rotation settings of a workspace from the server.
+type Reader interface {
+	Read(ctx context.Context, wid string) (*Config, error)
+}
+
+// Remote reads and writes the key rotation settings of a workspace on the server.
+type Remote interface {
+	Reader
+	Write(ctx context.Context, wid string, cfg *Config) error
+}
+
+// WorkspaceConfig pairs a workspace id with its key rotation settings.
+type WorkspaceConfig struct {
+	WID    string
+	Config *Config
+}
+
+// Service pulls, pushes and diffs key rotation settings between local files and the server.
+type Service struct {
+	Dir    *DirStore
+	Remote Remote
+}
+
+func NewService(dir *DirStore, remote Remote) *Service {
+	return &Service{Dir: dir, Remote: remote}
+}
+
+// Pull writes the remote key rotation settings of each workspace to the local files. It writes
+// nothing for a workspace that has none configured.
+func (s *Service) Pull(ctx context.Context, wids []string) error {
+	for _, wid := range wids {
+		if err := s.pull(ctx, wid); err != nil {
+			return err
+		}
+	}
+
+	return nil
+}
+
+func (s *Service) pull(ctx context.Context, wid string) error {
+	var (
+		cfg *Config
+		err error
+	)
+
+	slog.With("workspace", wid).Info("Pulling key rotation")
+
+	if cfg, err = s.Remote.Read(ctx, wid); err != nil {
+		return err
+	}
+
+	if cfg == nil {
+		slog.Info("No key rotation configured", "workspace", wid)
+		return nil
+	}
+
+	if err = s.Dir.Write(wid, cfg); err != nil {
+		return err
+	}
+
+	slog.Info("Pulled key rotation", "workspace", wid)
+
+	return nil
+}
+
+// ReadLocal reads and validates the local key rotation settings of the workspace. It returns nil
+// when the workspace has none.
+func (s *Service) ReadLocal(wid string) (*Config, error) {
+	cfg, err := s.Dir.Read(wid)
+	if err != nil {
+		return nil, errors.Wrap(err, "failed to read local key rotation")
+	}
+
+	if cfg == nil {
+		return nil, nil
+	}
+
+	if err = cfg.Validate(); err != nil {
+		return nil, errors.Wrapf(err, "failed to validate key rotation of workspace %s", wid)
+	}
+
+	return cfg, nil
+}
+
+// ReadAll reads and validates the local key rotation settings of each workspace, so that an invalid
+// file fails before anything is pushed. Workspaces without settings are left out.
+func (s *Service) ReadAll(wids []string) ([]WorkspaceConfig, error) {
+	var out []WorkspaceConfig
+
+	for _, wid := range wids {
+		cfg, err := s.ReadLocal(wid)
+		if err != nil {
+			return nil, err
+		}
+
+		if cfg != nil {
+			out = append(out, WorkspaceConfig{WID: wid, Config: cfg})
+		}
+	}
+
+	return out, nil
+}
+
+// Push writes the key rotation settings of each workspace to the server.
+func (s *Service) Push(ctx context.Context, items []WorkspaceConfig) error {
+	for _, item := range items {
+		if err := s.Remote.Write(ctx, item.WID, item.Config); err != nil {
+			return err
+		}
+
+		slog.Info("Pushed key rotation", "workspace", item.WID, "uses", len(item.Config.Uses()))
+	}
+
+	return nil
+}
+
+// Diff renders the difference between the local and remote key rotation settings of the workspace.
+func (s *Service) Diff(ctx context.Context, wid string, colors bool) (string, error) {
+	var (
+		local, remote *Config
+		err           error
+	)
+
+	if local, err = s.Dir.Read(wid); err != nil {
+		return "", errors.Wrap(err, "failed to read local key rotation")
+	}
+
+	if remote, err = s.Remote.Read(ctx, wid); err != nil {
+		return "", err
+	}
+
+	return TreeDiff(local, remote, colors)
+}
+
+// TenantWorkspaces returns the sorted ids of the workspaces in a tenant configuration. When data has
+// no servers, because the regular pull was skipped or filtered them out, they are read from source.
+func TenantWorkspaces(ctx context.Context, source api.Source, data models.Rfc7396PatchOperation) ([]string, error) {
+	var err error
+
+	if _, ok := data["servers"]; !ok {
+		if data, err = source.Read(ctx, api.WithFilters([]string{"servers"})); err != nil {
+			return nil, errors.Wrap(err, "failed to list tenant workspaces")
+		}
+	}
+
+	// the tenant export is decoded into a generic map, so servers is either a map or null
+	servers, _ := data["servers"].(map[string]any)
+
+	return slices.Sorted(maps.Keys(servers)), nil
+}
