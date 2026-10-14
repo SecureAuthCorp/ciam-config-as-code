@@ -68,9 +68,9 @@ Examples:
 )
 
 func init() {
-	pullCmd.PersistentFlags().BoolVar(&pullConfig.WithSecrets, "with-secrets", false, `Include secret fields (client secrets, signing keys, etc.) in the pulled configuration.
+	pullCmd.Flags().BoolVar(&pullConfig.WithSecrets, "with-secrets", false, `Include secret fields (client secrets, signing keys, etc.) in the pulled configuration.
 Example: --with-secrets`)
-	pullCmd.PersistentFlags().StringSliceVar(&pullConfig.Filters, "filter", []string{}, `Restrict the pull to selected top-level resources (comma-separated or repeated).
+	pullCmd.Flags().StringSliceVar(&pullConfig.Filters, "filter", []string{}, `Restrict the pull to selected top-level resources (comma-separated or repeated).
 Workspace resources: clients, idps, claims, custom_apps, gateways, policies, policy_execution_points,
                      pools, scopes (alias of scopes_without_service), scripts, script_execution_points,
                      server_consent, servers_bindings, services, theme_binding, webhooks,

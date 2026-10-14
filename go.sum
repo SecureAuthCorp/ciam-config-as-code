@@ -7,8 +7,8 @@ github.com/Masterminds/sprig/v3 v3.2.3 h1:eL2fZNezLomi0uOLqjQoN6BfsDD+fyLtgbJMAj
 github.com/Masterminds/sprig/v3 v3.2.3/go.mod h1:rXcFaZ2zZbLRJv/xSysmlgIM1u11eBaRMhvYXJNkGuM=
 github.com/asaskevich/govalidator v0.0.0-20230301143203-a9d515a09cc2 h1:DklsrG3dyBCFEj5IhUbnKptjxatkF07cF2ak3yi77so=
 github.com/asaskevich/govalidator v0.0.0-20230301143203-a9d515a09cc2/go.mod h1:WaHUgvxTVq04UNunO+XhnAqY/wQc+bxr74GqbsZ/Jqw=
-github.com/cloudentity/acp-client-go v0.0.0-20260825070526-1de34904f06f h1:EVEtG2VSF7NojXtgOeWjUQtgwOGvnBlTWmVpD24LEVQ=
-github.com/cloudentity/acp-client-go v0.0.0-20260825070526-1de34904f06f/go.mod h1:Hr2WHHXmp+DC4B2oprhgP47yl/dsCAyj9HcG6P3z4m0=
+github.com/cloudentity/acp-client-go v0.0.0-20261006105303-b8f2a1b4bb59 h1:MYaO2dYPLPyjNBw92+6us1hrWE8iSaXxnYJGgIX6uPk=
+github.com/cloudentity/acp-client-go v0.0.0-20261006105303-b8f2a1b4bb59/go.mod h1:Hr2WHHXmp+DC4B2oprhgP47yl/dsCAyj9HcG6P3z4m0=
 github.com/corvus-ch/zbase32 v1.0.0 h1:pDV0qZ1g+HYA8P0PbULsgUg/tZue1FIjsZ7r7h4nZeU=
 github.com/corvus-ch/zbase32 v1.0.0/go.mod h1:A7KLRecF1tysURyoqiJBvMJFmt/ccqkRdDTLjlQeVsU=
 github.com/cpuguy83/go-md2man/v2 v2.0.3/go.mod h1:tgQtvFlXSQOSOSIRvRPT7W67SCa46tRHOmNcaadrF8o=
@@ -92,6 +92,8 @@ github.com/google/go-cmp v0.7.0/go.mod h1:pXiqmnSA92OHEEa9HXL2W4E7lf9JzCmGVUdgjX
 github.com/google/uuid v1.1.1/go.mod h1:TIyPZe4MgqvfeYDBFedMoGGpEw/LqOeaOT+nhxU+yHo=
 github.com/google/uuid v1.6.0 h1:NIvaJDMOsjHA8n1jAhLSgzrAzy1Hgr+hNrb57e+94F0=
 github.com/google/uuid v1.6.0/go.mod h1:TIyPZe4MgqvfeYDBFedMoGGpEw/LqOeaOT+nhxU+yHo=
+github.com/gorhill/cronexpr v0.0.0-20180427100037-88b0669f7d75 h1:f0n1xnMSmBLzVfsMMvriDyA75NB/oBgILX2GcHXIQzY=
+github.com/gorhill/cronexpr v0.0.0-20180427100037-88b0669f7d75/go.mod h1:g2644b03hfBX9Ov0ZBDgXXens4rxSxmqFBbhvKv2yVA=
 github.com/hashicorp/hcl v1.0.0 h1:0Anlzjpi4vEasTeNFn2mLJgTSwt0+6sfsiTG8qcWGx4=
 github.com/hashicorp/hcl v1.0.0/go.mod h1:E5yfLk+7swimpb2L/Alb/PJmXilQ/rhwaUYs4T20WEQ=
 github.com/huandu/xstrings v1.3.3/go.mod h1:y5/lhBue+AyNmUVz9RLU9xbLR0o4KIIExikq4ovT0aE=

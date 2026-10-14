@@ -83,19 +83,7 @@ Examples:
 				return err
 			}
 
-			if diffConfig.Out != "-" {
-				if err = os.WriteFile(diffConfig.Out, []byte(result), 0644); err != nil {
-					return errors.Wrap(err, "failed to write diff result to file")
-				}
-
-				return nil
-			}
-
-			if _, err = os.Stdout.Write([]byte(result)); err != nil {
-				return errors.Wrap(err, "failed to write diff result to stdout")
-			}
-
-			return nil
+			return writeDiffResult(result)
 		},
 	}
 	diffConfig struct {
@@ -110,15 +98,31 @@ Examples:
 	}
 )
 
+func writeDiffResult(result string) error {
+	if diffConfig.Out != "-" {
+		if err := os.WriteFile(diffConfig.Out, []byte(result), 0644); err != nil {
+			return errors.Wrap(err, "failed to write diff result to file")
+		}
+
+		return nil
+	}
+
+	if _, err := os.Stdout.Write([]byte(result)); err != nil {
+		return errors.Wrap(err, "failed to write diff result to stdout")
+	}
+
+	return nil
+}
+
 func init() {
-	diffCmd.PersistentFlags().StringVar(&diffConfig.Source, "source", "", `Source of the comparison (required). Format: [profile@]source-type
+	diffCmd.Flags().StringVar(&diffConfig.Source, "source", "", `Source of the comparison (required). Format: [profile@]source-type
 Source types: local, remote, merged
 Examples:
   --source local
   --source remote
   --source merged
   --source dev@remote`)
-	diffCmd.PersistentFlags().StringVar(&diffConfig.Target, "target", "", `Target of the comparison (required). Format: [profile@]source-type
+	diffCmd.Flags().StringVar(&diffConfig.Target, "target", "", `Target of the comparison (required). Format: [profile@]source-type
 Source types: local, remote, merged
 Examples:
   --target remote
@@ -126,9 +130,9 @@ Examples:
   --target merged`)
 	diffCmd.PersistentFlags().BoolVar(&diffConfig.Colors, "colors", true, `Colorize the diff output (default true).
 Example: --colors=false`)
-	diffCmd.PersistentFlags().BoolVar(&diffConfig.OnlyPresent, "only-present", false, `Only diff resources that are present in the source; ignore resources that only exist in the target.
+	diffCmd.Flags().BoolVar(&diffConfig.OnlyPresent, "only-present", false, `Only diff resources that are present in the source; ignore resources that only exist in the target.
 Example: --only-present`)
-	diffCmd.PersistentFlags().StringSliceVar(&diffConfig.Filters, "filter", []string{}, `Restrict the comparison to selected top-level resources (comma-separated or repeated).
+	diffCmd.Flags().StringSliceVar(&diffConfig.Filters, "filter", []string{}, `Restrict the comparison to selected top-level resources (comma-separated or repeated).
 Workspace resources: clients, idps, claims, custom_apps, gateways, policies, policy_execution_points,
                      pools, scopes (alias of scopes_without_service), scripts, script_execution_points,
                      server_consent, servers_bindings, services, theme_binding, webhooks,
@@ -144,9 +148,9 @@ Examples:
 Examples:
   --out -            (stdout)
   --out ./diff.txt   (file)`)
-	diffCmd.PersistentFlags().BoolVar(&diffConfig.WithSecrets, "with-secrets", false, `Include secret fields in the comparison.
+	diffCmd.Flags().BoolVar(&diffConfig.WithSecrets, "with-secrets", false, `Include secret fields in the comparison.
 Example: --with-secrets`)
-	diffCmd.PersistentFlags().BoolVar(&diffConfig.FilterVolatile, "no-volatile", false, `Ignore volatile fields (e.g. timestamps, generated IDs) when comparing.
+	diffCmd.Flags().BoolVar(&diffConfig.FilterVolatile, "no-volatile", false, `Ignore volatile fields (e.g. timestamps, generated IDs) when comparing.
 Example: --no-volatile`)
 
 	mustMarkRequired(diffCmd, "source", "target")

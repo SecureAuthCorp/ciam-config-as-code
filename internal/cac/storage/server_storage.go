@@ -8,6 +8,7 @@ import (
 	smodels "github.com/cloudentity/acp-client-go/clients/system/models"
 	"github.com/cloudentity/cac/internal/cac/api"
 	"github.com/cloudentity/cac/internal/cac/utils"
+	"github.com/go-openapi/strfmt"
 	"github.com/pkg/errors"
 	"golang.org/x/exp/maps"
 	"golang.org/x/exp/slog"
@@ -272,10 +273,19 @@ func (s *ServerStorage) workspacePath(workspace string) string {
 	return filepath.Join(s.Config.DirPath, "workspaces", workspace)
 }
 
+// serverFile is the on-disk server model. It hides the read-only created_at and updated_at
+// timestamps of smodels.ServerDump: the hub import model has no such fields, so writing their
+// zero values would make the file fail strict decoding on push.
+type serverFile struct {
+	smodels.ServerDump
+	CreatedAt *strfmt.DateTime `json:"created_at,omitempty"`
+	UpdatedAt *strfmt.DateTime `json:"updated_at,omitempty"`
+}
+
 func (s *ServerStorage) storeServer(workspace string, data *models.TreeServer) error {
 	var (
 		path   = filepath.Join(s.workspacePath(workspace), "server")
-		server smodels.ServerDump
+		server serverFile
 		bts    []byte
 		err    error
 	)
@@ -285,7 +295,7 @@ func (s *ServerStorage) storeServer(workspace string, data *models.TreeServer) e
 		return err
 	}
 
-	if err = json.Unmarshal(bts, &server); err != nil {
+	if err = json.Unmarshal(bts, &server.ServerDump); err != nil {
 		return err
 	}
 

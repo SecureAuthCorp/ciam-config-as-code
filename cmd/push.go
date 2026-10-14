@@ -99,11 +99,11 @@ Examples:
 		},
 	}
 	pushConfig struct {
-		DryRun     bool
-		Out        string
-		Mode       string
-		Method     string
-		Filters    []string
+		DryRun          bool
+		Out             string
+		Mode            string
+		Method          string
+		Filters         []string
 		NoLocalValidate bool
 	}
 )
@@ -118,21 +118,21 @@ Examples:
   --out -            (stdout)
   --out ./out.yaml   (single file)
   --out ./out/       (directory)`)
-	pushCmd.PersistentFlags().StringVar(&pushConfig.Mode, "mode", "update", `Conflict resolution mode when a resource already exists on the server.
+	pushCmd.Flags().StringVar(&pushConfig.Mode, "mode", "update", `Conflict resolution mode when a resource already exists on the server.
 One of: ignore, fail, update
   ignore - skip existing resources
   fail   - abort the push on conflict
   update - overwrite the existing resource (default)
 Example: --mode update`)
-	pushCmd.PersistentFlags().StringVar(&pushConfig.Method, "method", "", `How to apply the configuration to the server (required).
+	pushCmd.Flags().StringVar(&pushConfig.Method, "method", "", `How to apply the configuration to the server (required).
 One of: patch, import
   patch  - merge remote configuration with your local config before applying
   import - replace remote configuration with your local config
 Example: --method patch`)
-	pushCmd.PersistentFlags().BoolVar(&pushConfig.NoLocalValidate, "no-validate", false, `Skip client-side validation before pushing.
+	pushCmd.Flags().BoolVar(&pushConfig.NoLocalValidate, "no-validate", false, `Skip client-side validation before pushing.
 Workaround for cases where local validation rejects a configuration the server accepts.
 Example: --no-validate`)
-	pushCmd.PersistentFlags().StringSliceVar(&pushConfig.Filters, "filter", []string{}, `Restrict the push to selected top-level resources (comma-separated or repeated).
+	pushCmd.Flags().StringSliceVar(&pushConfig.Filters, "filter", []string{}, `Restrict the push to selected top-level resources (comma-separated or repeated).
 Workspace resources: clients, idps, claims, custom_apps, gateways, policies, policy_execution_points,
                      pools, scopes (alias of scopes_without_service), scripts, script_execution_points,
                      server_consent, servers_bindings, services, theme_binding, webhooks,

@@ -4,12 +4,13 @@ go 1.24.0
 
 require (
 	github.com/Masterminds/sprig/v3 v3.2.3
-	github.com/cloudentity/acp-client-go v0.0.0-20260825070526-1de34904f06f
+	github.com/cloudentity/acp-client-go v0.0.0-20261006105303-b8f2a1b4bb59
 	github.com/corvus-ch/zbase32 v1.0.0
 	github.com/go-json-experiment/json v0.0.0-20240524174822-2d9f40f7385b
 	github.com/go-openapi/strfmt v0.24.0
 	github.com/goccy/go-yaml v1.12.0
 	github.com/google/go-cmp v0.7.0
+	github.com/gorhill/cronexpr v0.0.0-20180427100037-88b0669f7d75
 	github.com/imdario/mergo v0.3.16
 	github.com/mitchellh/mapstructure v1.5.0
 	github.com/pkg/errors v0.9.1
