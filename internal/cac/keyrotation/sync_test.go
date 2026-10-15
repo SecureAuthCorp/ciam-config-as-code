@@ -11,48 +11,45 @@ import (
 	"github.com/stretchr/testify/require"
 )
 
-func TestServicePull(t *testing.T) {
-	dir := t.TempDir()
+func TestPull(t *testing.T) {
+	dir := keyrotation.NewDirStore([]string{t.TempDir()})
 	cfg := &keyrotation.Config{Sig: &keyrotation.Rotation{Enabled: true, Cron: "0 0 1 * *"}}
-	svc := keyrotation.NewService(keyrotation.NewDirStore([]string{dir}), &fakeRemote{
-		configs: map[string]*keyrotation.Config{"a": cfg},
-	})
+	remote := &fakeRemote{configs: map[string]*keyrotation.Config{"a": cfg}}
 
-	require.NoError(t, svc.Pull(context.Background(), []string{"a", "unconfigured"}))
+	require.NoError(t, keyrotation.Pull(context.Background(), remote, dir, []string{"a", "unconfigured"}))
 
-	wids, err := svc.Dir.Workspaces()
+	wids, err := dir.Workspaces()
 	require.NoError(t, err)
 	require.Equal(t, []string{"a"}, wids)
 
-	got, err := svc.Dir.Read("a")
+	got, err := dir.Read("a")
 	require.NoError(t, err)
 	require.Equal(t, cfg, got)
 
-	svc.Remote = &fakeRemote{errs: map[string]error{"a": errors.New("boom")}}
-	require.EqualError(t, svc.Pull(context.Background(), []string{"a"}), "boom")
+	remote = &fakeRemote{errs: map[string]error{"a": errors.New("boom")}}
+	require.EqualError(t, keyrotation.Pull(context.Background(), remote, dir, []string{"a"}), "boom")
 }
 
-func TestServiceReadAll(t *testing.T) {
-	dir := t.TempDir()
+func TestReadAll(t *testing.T) {
+	dir := keyrotation.NewDirStore([]string{t.TempDir()})
 	cfg := &keyrotation.Config{Sig: &keyrotation.Rotation{Enabled: true, Cron: "0 0 1 * *"}}
-	svc := keyrotation.NewService(keyrotation.NewDirStore([]string{dir}), &fakeRemote{})
-	require.NoError(t, svc.Dir.Write("a", cfg))
+	require.NoError(t, dir.Write("a", cfg))
 
-	items, err := svc.ReadAll([]string{"a", "missing"})
+	items, err := keyrotation.ReadAll(dir, []string{"a", "missing"})
 	require.NoError(t, err)
 	require.Equal(t, []keyrotation.WorkspaceConfig{{WID: "a", Config: cfg}}, items)
 
-	items, err = svc.ReadAll([]string{"missing"})
+	items, err = keyrotation.ReadAll(dir, []string{"missing"})
 	require.NoError(t, err)
 	require.Empty(t, items)
 
-	require.NoError(t, svc.Dir.Write("invalid", &keyrotation.Config{Enc: &keyrotation.Rotation{Enabled: true, Cron: "bad"}}))
+	require.NoError(t, dir.Write("invalid", &keyrotation.Config{Enc: &keyrotation.Rotation{Enabled: true, Cron: "bad"}}))
 
-	_, err = svc.ReadAll([]string{"a", "invalid"})
+	_, err = keyrotation.ReadAll(dir, []string{"a", "invalid"})
 	require.ErrorContains(t, err, "failed to validate key rotation of workspace invalid: invalid cron for enc")
 }
 
-func TestServicePush(t *testing.T) {
+func TestPush(t *testing.T) {
 	monthly := func(enabled bool) *keyrotation.Rotation {
 		return &keyrotation.Rotation{Enabled: enabled, Cron: "0 0 1 * *"}
 	}
@@ -65,7 +62,7 @@ func TestServicePush(t *testing.T) {
 			"cron":    {Sig: &keyrotation.Rotation{Enabled: true, Cron: "@weekly"}},
 		}}
 
-		require.NoError(t, keyrotation.NewService(nil, remote).Push(context.Background(), []keyrotation.WorkspaceConfig{
+		require.NoError(t, keyrotation.Push(context.Background(), remote, []keyrotation.WorkspaceConfig{
 			{WID: "same", Config: &keyrotation.Config{Sig: monthly(true), Enc: monthly(false)}},
 			{WID: "enabled", Config: &keyrotation.Config{Sig: monthly(true), Enc: monthly(false)}},
 			{WID: "cron", Config: &keyrotation.Config{Sig: monthly(true)}},
@@ -82,7 +79,7 @@ func TestServicePush(t *testing.T) {
 		local := &keyrotation.Config{Sig: &keyrotation.Rotation{Enabled: true, Cron: "0 0 1 * *", StartingFrom: &startingFrom}}
 		remote := &fakeRemote{configs: map[string]*keyrotation.Config{"a": {Sig: monthly(true)}}}
 
-		require.NoError(t, keyrotation.NewService(nil, remote).Push(context.Background(), []keyrotation.WorkspaceConfig{{WID: "a", Config: local}}))
+		require.NoError(t, keyrotation.Push(context.Background(), remote, []keyrotation.WorkspaceConfig{{WID: "a", Config: local}}))
 		require.Equal(t, []keyrotation.WorkspaceConfig{{WID: "a", Config: local}}, remote.writes)
 	})
 
@@ -90,7 +87,7 @@ func TestServicePush(t *testing.T) {
 		remote := &fakeRemote{errs: map[string]error{"a": errors.New("boom")}}
 		items := []keyrotation.WorkspaceConfig{{WID: "a", Config: &keyrotation.Config{Sig: monthly(true)}}}
 
-		require.EqualError(t, keyrotation.NewService(nil, remote).Push(context.Background(), items), "boom")
+		require.EqualError(t, keyrotation.Push(context.Background(), remote, items), "boom")
 		require.Empty(t, remote.writes)
 	})
 
@@ -98,7 +95,7 @@ func TestServicePush(t *testing.T) {
 		remote := &fakeRemote{writeErrs: map[string]error{"a": errors.New("boom")}}
 		items := []keyrotation.WorkspaceConfig{{WID: "a", Config: &keyrotation.Config{Sig: monthly(true)}}}
 
-		require.EqualError(t, keyrotation.NewService(nil, remote).Push(context.Background(), items), "boom")
+		require.EqualError(t, keyrotation.Push(context.Background(), remote, items), "boom")
 		require.Empty(t, remote.writes)
 	})
 }

@@ -11,14 +11,9 @@ import (
 	"golang.org/x/exp/slog"
 )
 
-// Reader reads the key rotation settings of a workspace from the server.
-type Reader interface {
-	Read(ctx context.Context, wid string) (*Config, error)
-}
-
 // Remote reads and writes the key rotation settings of a workspace on the server.
 type Remote interface {
-	Reader
+	Read(ctx context.Context, wid string) (*Config, error)
 	Write(ctx context.Context, wid string, cfg *Config) error
 }
 
@@ -28,87 +23,52 @@ type WorkspaceConfig struct {
 	Config *Config
 }
 
-// Service pulls, pushes and diffs key rotation settings between local files and the server.
-type Service struct {
-	Dir    *DirStore
-	Remote Remote
-}
-
-func NewService(dir *DirStore, remote Remote) *Service {
-	return &Service{Dir: dir, Remote: remote}
-}
-
-// Pull writes the remote key rotation settings of each workspace to the local files. It writes
-// nothing for a workspace that has none configured.
-func (s *Service) Pull(ctx context.Context, wids []string) error {
+// Pull writes the remote key rotation settings of each workspace to dir. It writes nothing for a
+// workspace that has none configured.
+func Pull(ctx context.Context, remote Remote, dir *DirStore, wids []string) error {
 	for _, wid := range wids {
-		if err := s.pull(ctx, wid); err != nil {
+		slog.With("workspace", wid).Info("Pulling key rotation")
+
+		cfg, err := remote.Read(ctx, wid)
+		if err != nil {
 			return err
 		}
+
+		if cfg == nil {
+			slog.Info("No key rotation configured", "workspace", wid)
+			continue
+		}
+
+		if err = dir.Write(wid, cfg); err != nil {
+			return err
+		}
+
+		slog.Info("Pulled key rotation", "workspace", wid)
 	}
 
 	return nil
-}
-
-func (s *Service) pull(ctx context.Context, wid string) error {
-	var (
-		cfg *Config
-		err error
-	)
-
-	slog.With("workspace", wid).Info("Pulling key rotation")
-
-	if cfg, err = s.Remote.Read(ctx, wid); err != nil {
-		return err
-	}
-
-	if cfg == nil {
-		slog.Info("No key rotation configured", "workspace", wid)
-		return nil
-	}
-
-	if err = s.Dir.Write(wid, cfg); err != nil {
-		return err
-	}
-
-	slog.Info("Pulled key rotation", "workspace", wid)
-
-	return nil
-}
-
-// ReadLocal reads and validates the local key rotation settings of the workspace. It returns nil
-// when the workspace has none.
-func (s *Service) ReadLocal(wid string) (*Config, error) {
-	cfg, err := s.Dir.Read(wid)
-	if err != nil {
-		return nil, errors.Wrap(err, "failed to read local key rotation")
-	}
-
-	if cfg == nil {
-		return nil, nil
-	}
-
-	if err = cfg.Validate(); err != nil {
-		return nil, errors.Wrapf(err, "failed to validate key rotation of workspace %s", wid)
-	}
-
-	return cfg, nil
 }
 
 // ReadAll reads and validates the local key rotation settings of each workspace, so that an invalid
 // file fails before anything is pushed. Workspaces without settings are left out.
-func (s *Service) ReadAll(wids []string) ([]WorkspaceConfig, error) {
+func ReadAll(dir *DirStore, wids []string) ([]WorkspaceConfig, error) {
 	var out []WorkspaceConfig
 
 	for _, wid := range wids {
-		cfg, err := s.ReadLocal(wid)
+		cfg, err := dir.Read(wid)
 		if err != nil {
-			return nil, err
+			return nil, errors.Wrap(err, "failed to read local key rotation")
 		}
 
-		if cfg != nil {
-			out = append(out, WorkspaceConfig{WID: wid, Config: cfg})
+		if cfg == nil {
+			continue
 		}
+
+		if err = cfg.Validate(); err != nil {
+			return nil, errors.Wrapf(err, "failed to validate key rotation of workspace %s", wid)
+		}
+
+		out = append(out, WorkspaceConfig{WID: wid, Config: cfg})
 	}
 
 	return out, nil
@@ -117,27 +77,27 @@ func (s *Service) ReadAll(wids []string) ([]WorkspaceConfig, error) {
 // Push writes the key rotation settings of each workspace to the server. A use whose enabled and cron
 // already match the server is skipped, unless it sets starting_from: the server never returns it, so
 // such a use is always written in case it reschedules the rotation.
-func (s *Service) Push(ctx context.Context, items []WorkspaceConfig) error {
+func Push(ctx context.Context, remote Remote, items []WorkspaceConfig) error {
 	for _, item := range items {
-		remote, err := s.Remote.Read(ctx, item.WID)
+		current, err := remote.Read(ctx, item.WID)
 		if err != nil {
 			return err
 		}
 
-		if remote == nil {
-			remote = &Config{}
+		if current == nil {
+			current = &Config{}
 		}
 
 		changed := &Config{
-			Sig: changedRotation(item.WID, UseSig, item.Config.Sig, remote.Sig),
-			Enc: changedRotation(item.WID, UseEnc, item.Config.Enc, remote.Enc),
+			Sig: changedRotation(item.WID, UseSig, item.Config.Sig, current.Sig),
+			Enc: changedRotation(item.WID, UseEnc, item.Config.Enc, current.Enc),
 		}
 
 		if len(changed.Uses()) == 0 {
 			continue
 		}
 
-		if err = s.Remote.Write(ctx, item.WID, changed); err != nil {
+		if err = remote.Write(ctx, item.WID, changed); err != nil {
 			return err
 		}
 

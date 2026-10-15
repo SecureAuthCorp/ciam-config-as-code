@@ -68,7 +68,7 @@ func diffConfigs(local, remote *Config) (source, target *Config) {
 // workspace has none.
 type Side struct {
 	Local  *DirStore
-	Remote Reader
+	Remote Remote
 	// Tenant lists the workspaces of a remote side in tenant mode
 	Tenant api.Source
 }

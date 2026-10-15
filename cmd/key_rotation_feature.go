@@ -58,27 +58,16 @@ func keyRotationDir(conf *config.Configuration) (*keyrotation.DirStore, error) {
 	return keyrotation.NewDirStore(conf.Storage.DirPath), nil
 }
 
-// keyRotationService builds the key rotation service of the selected profile: its storage dirs and
-// its server.
-func keyRotationService(app *cac.Application) (*keyrotation.Service, error) {
-	dir, err := keyRotationDir(app.Config)
-	if err != nil {
-		return nil, err
-	}
-
-	return keyrotation.NewService(dir, app.KeyRotation), nil
-}
-
 // pullKeyRotations pulls key rotation after a plain pull: for the selected workspace, or in tenant
 // mode for every workspace of the tenant. data is what the regular pull read, nil when it was skipped.
 func pullKeyRotations(ctx context.Context, app *cac.Application, data models.Rfc7396PatchOperation) error {
 	var (
 		wids = []string{rootConfig.Workspace}
-		svc  *keyrotation.Service
+		dir  *keyrotation.DirStore
 		err  error
 	)
 
-	if svc, err = keyRotationService(app); err != nil {
+	if dir, err = keyRotationDir(app.Config); err != nil {
 		return err
 	}
 
@@ -88,7 +77,7 @@ func pullKeyRotations(ctx context.Context, app *cac.Application, data models.Rfc
 		}
 	}
 
-	return svc.Pull(ctx, wids)
+	return keyrotation.Pull(ctx, app.KeyRotation, dir, wids)
 }
 
 // keyRotationWorkspaces returns the workspaces a plain push considers: the selected workspace, or in
@@ -101,15 +90,20 @@ func keyRotationWorkspaces(dir *keyrotation.DirStore) ([]string, error) {
 	return []string{rootConfig.Workspace}, nil
 }
 
-// readKeyRotations reads and validates the local key rotation settings a plain push sends, before
-// anything is pushed.
-func readKeyRotations(svc *keyrotation.Service) ([]keyrotation.WorkspaceConfig, error) {
-	wids, err := keyRotationWorkspaces(svc.Dir)
+// readKeyRotations reads and validates the local key rotation settings a push sends, before anything
+// is pushed.
+func readKeyRotations(app *cac.Application) ([]keyrotation.WorkspaceConfig, error) {
+	dir, err := keyRotationDir(app.Config)
 	if err != nil {
 		return nil, err
 	}
 
-	items, err := svc.ReadAll(wids)
+	wids, err := keyRotationWorkspaces(dir)
+	if err != nil {
+		return nil, err
+	}
+
+	items, err := keyrotation.ReadAll(dir, wids)
 	if err != nil {
 		return nil, err
 	}
@@ -147,14 +141,14 @@ func warnIgnoredKeyRotation(app *cac.Application) {
 
 // pushKeyRotations pushes key rotation, or with --dry-run writes it to --out, appending to an --out
 // file when appendFile is set because the regular dry-run output was written to it first.
-func pushKeyRotations(ctx context.Context, svc *keyrotation.Service, items []keyrotation.WorkspaceConfig, appendFile bool) error {
+func pushKeyRotations(ctx context.Context, app *cac.Application, items []keyrotation.WorkspaceConfig, appendFile bool) error {
 	if pushConfig.DryRun {
 		dryRun := &keyrotation.DryRun{Out: pushConfig.Out, Stdout: os.Stdout, AppendFile: appendFile}
 
 		return dryRun.WriteAll(items)
 	}
 
-	return svc.Push(ctx, items)
+	return keyrotation.Push(ctx, app.KeyRotation, items)
 }
 
 // sideSpec is a resolved --source or --target value of a diff.

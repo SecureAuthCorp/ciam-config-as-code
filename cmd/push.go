@@ -69,18 +69,13 @@ Examples:
 // runPush pushes the configuration and the key rotation, as scoped.
 func runPush(ctx context.Context, app *cac.Application, s scope) error {
 	var (
-		svc *keyrotation.Service
 		krs []keyrotation.WorkspaceConfig
 		err error
 	)
 
 	// key rotation is read and validated up front, so an invalid file fails before anything is pushed
 	if s.keyRotation {
-		if svc, err = keyRotationService(app); err != nil {
-			return err
-		}
-
-		if krs, err = readKeyRotations(svc); err != nil {
+		if krs, err = readKeyRotations(app); err != nil {
 			return err
 		}
 	} else if !app.Config.KeyRotationEnabled() {
@@ -94,7 +89,7 @@ func runPush(ctx context.Context, app *cac.Application, s scope) error {
 	}
 
 	if s.keyRotation {
-		return pushKeyRotations(ctx, svc, krs, s.regular)
+		return pushKeyRotations(ctx, app, krs, s.regular)
 	}
 
 	return nil
