@@ -1,11 +1,8 @@
 package cmd
 
 import (
-	"os"
-
 	"github.com/cloudentity/cac/internal/cac"
 	"github.com/cloudentity/cac/internal/cac/keyrotation"
-	"github.com/cloudentity/cac/internal/cac/utils"
 	"github.com/pkg/errors"
 	"github.com/spf13/cobra"
 	"golang.org/x/exp/slog"
@@ -73,24 +70,7 @@ func pushKeyRotation(cmd *cobra.Command, svc *keyrotation.Service, wid string) e
 		return nil
 	}
 
-	if pushConfig.DryRun {
-		bts, err := utils.ToYaml(items[0].Config)
-		if err != nil {
-			return errors.Wrap(err, "failed to marshal key rotation")
-		}
-
-		if pushConfig.Out != "-" {
-			return errors.Wrap(os.WriteFile(pushConfig.Out, bts, 0644), "failed to write key rotation to file")
-		}
-
-		if _, err = os.Stdout.Write(bts); err != nil {
-			return errors.Wrap(err, "failed to write key rotation to stdout")
-		}
-
-		return nil
-	}
-
-	return svc.Push(cmd.Context(), items)
+	return pushKeyRotations(cmd.Context(), svc, items, false)
 }
 
 func diffKeyRotation(cmd *cobra.Command, svc *keyrotation.Service, wid string) error {

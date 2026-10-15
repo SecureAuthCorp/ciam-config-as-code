@@ -75,7 +75,7 @@ Examples:
 			}
 
 			if handle {
-				return pushKeyRotations(cmd.Context(), svc, krs)
+				return pushKeyRotations(cmd.Context(), svc, krs, !keyRotationOnly(pushConfig.Filters))
 			}
 
 			return nil

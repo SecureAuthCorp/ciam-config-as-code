@@ -309,7 +309,10 @@ Constraints:
 - `scheduled_at` is read-only and rejected in the file.
 
 > **Note:** `push key-rotation` validates every cron before any API call,
-> and `--dry-run` prints the settings that would be sent instead of pushing them.
+> and `--dry-run` writes the settings that would be sent instead of pushing them, in the
+> same format as [plain `push --dry-run`](#key-rotation-in-plain-pull-push-and-diff):
+> a `# key_rotation (<workspace-id>)` YAML document to stdout or an `--out` file, or
+> `<out>/workspaces/<workspace-id>/key_rotation.yaml` when `--out` is an existing directory.
 
 #### Key rotation in plain pull, push and diff
 

@@ -115,11 +115,11 @@ func warnIgnoredKeyRotation(app *cac.Application) {
 	}
 }
 
-// pushKeyRotations pushes key rotation after a plain push, or writes it next to the dry-run output,
-// appending to the regular dry-run output file unless the regular push was skipped.
-func pushKeyRotations(ctx context.Context, svc *keyrotation.Service, items []keyrotation.WorkspaceConfig) error {
+// pushKeyRotations pushes key rotation, or with --dry-run writes it to --out, appending to an --out
+// file when appendFile is set because the regular dry-run output was written to it first.
+func pushKeyRotations(ctx context.Context, svc *keyrotation.Service, items []keyrotation.WorkspaceConfig, appendFile bool) error {
 	if pushConfig.DryRun {
-		dryRun := &keyrotation.DryRun{Out: pushConfig.Out, Stdout: os.Stdout, AppendFile: !keyRotationOnly(pushConfig.Filters)}
+		dryRun := &keyrotation.DryRun{Out: pushConfig.Out, Stdout: os.Stdout, AppendFile: appendFile}
 
 		return dryRun.WriteAll(items)
 	}
