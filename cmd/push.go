@@ -41,8 +41,6 @@ Examples:
 		RunE: func(cmd *cobra.Command, args []string) error {
 			var (
 				app *cac.Application
-				svc *keyrotation.Service
-				krs []keyrotation.WorkspaceConfig
 				s   scope
 				err error
 			)
@@ -55,30 +53,7 @@ Examples:
 				return err
 			}
 
-			// key rotation is read and validated up front, so an invalid file fails before anything is pushed
-			if s.keyRotation {
-				if svc, err = keyRotationService(app); err != nil {
-					return err
-				}
-
-				if krs, err = readKeyRotations(svc); err != nil {
-					return err
-				}
-			} else if !app.Config.KeyRotationEnabled() {
-				warnIgnoredKeyRotation(app)
-			}
-
-			if s.regular {
-				if err = pushConfiguration(cmd.Context(), app, pushConfig.Filters); err != nil {
-					return err
-				}
-			}
-
-			if s.keyRotation {
-				return pushKeyRotations(cmd.Context(), svc, krs, s.regular)
-			}
-
-			return nil
+			return runPush(cmd.Context(), app, s)
 		},
 	}
 	pushConfig struct {
@@ -90,6 +65,40 @@ Examples:
 		NoLocalValidate bool
 	}
 )
+
+// runPush pushes the configuration and the key rotation, as scoped.
+func runPush(ctx context.Context, app *cac.Application, s scope) error {
+	var (
+		svc *keyrotation.Service
+		krs []keyrotation.WorkspaceConfig
+		err error
+	)
+
+	// key rotation is read and validated up front, so an invalid file fails before anything is pushed
+	if s.keyRotation {
+		if svc, err = keyRotationService(app); err != nil {
+			return err
+		}
+
+		if krs, err = readKeyRotations(svc); err != nil {
+			return err
+		}
+	} else if !app.Config.KeyRotationEnabled() {
+		warnIgnoredKeyRotation(app)
+	}
+
+	if s.regular {
+		if err = pushConfiguration(ctx, app, pushConfig.Filters); err != nil {
+			return err
+		}
+	}
+
+	if s.keyRotation {
+		return pushKeyRotations(ctx, svc, krs, s.regular)
+	}
+
+	return nil
+}
 
 // pushConfiguration pushes the regular configuration, or writes it to --out with --dry-run.
 func pushConfiguration(ctx context.Context, app *cac.Application, filters []string) error {

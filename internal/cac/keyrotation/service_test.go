@@ -102,25 +102,3 @@ func TestServicePush(t *testing.T) {
 		require.Empty(t, remote.writes)
 	})
 }
-
-func TestServiceDiff(t *testing.T) {
-	dir := t.TempDir()
-	local := &keyrotation.Config{Sig: &keyrotation.Rotation{Enabled: true, Cron: "0 0 1 * *"}}
-	svc := keyrotation.NewService(keyrotation.NewDirStore([]string{dir}), &fakeRemote{
-		configs: map[string]*keyrotation.Config{"a": {Sig: &keyrotation.Rotation{Enabled: false, Cron: "0 0 1 * *"}}},
-	})
-	require.NoError(t, svc.Dir.Write("a", local))
-
-	result, err := svc.Diff(context.Background(), "a", false)
-	require.NoError(t, err)
-	require.Equal(t, treeDiff(t,
-		&keyrotation.Config{Sig: &keyrotation.Rotation{Enabled: true, Cron: "0 0 1 * *"}},
-		&keyrotation.Config{Sig: &keyrotation.Rotation{Enabled: false, Cron: "0 0 1 * *"}},
-	), result)
-	require.NotEmpty(t, result)
-
-	// unlike a plain diff side, the subcommand does not treat a missing workspace as unconfigured
-	svc.Remote = &fakeRemote{errs: map[string]error{"a": errors.New("boom")}}
-	_, err = svc.Diff(context.Background(), "a", false)
-	require.EqualError(t, err, "boom")
-}

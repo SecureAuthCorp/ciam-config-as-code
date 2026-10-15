@@ -161,24 +161,6 @@ func changedRotation(wid, use string, local, remote *Rotation) *Rotation {
 	return local
 }
 
-// Diff renders the difference between the local and remote key rotation settings of the workspace.
-func (s *Service) Diff(ctx context.Context, wid string, colors bool) (string, error) {
-	var (
-		local, remote *Config
-		err           error
-	)
-
-	if local, err = s.Dir.Read(wid); err != nil {
-		return "", errors.Wrap(err, "failed to read local key rotation")
-	}
-
-	if remote, err = s.Remote.Read(ctx, wid); err != nil {
-		return "", err
-	}
-
-	return TreeDiff(local, remote, colors)
-}
-
 // TenantWorkspaces returns the sorted ids of the workspaces in a tenant configuration. When data has
 // no servers, because the regular pull was skipped or filtered them out, they are read from source.
 func TenantWorkspaces(ctx context.Context, source api.Source, data models.Rfc7396PatchOperation) ([]string, error) {

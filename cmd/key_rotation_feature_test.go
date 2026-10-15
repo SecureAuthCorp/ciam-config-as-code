@@ -64,13 +64,25 @@ func keyRotationApp(t *testing.T, other config.Configuration) *cac.Application {
 	}
 }
 
-// setDiffConfig sets the diff and root flags for the duration of the test.
-func setDiffConfig(t *testing.T, source, target string, filters ...string) {
-	savedDiff, savedRoot := diffConfig, rootConfig
-	t.Cleanup(func() { diffConfig, rootConfig = savedDiff, savedRoot })
+// setFlags selects the demo workspace and turns diff colors off, restoring the flags after the test.
+func setFlags(t *testing.T) {
+	savedDiff, savedPush, savedRoot := diffConfig, pushConfig, rootConfig
+	t.Cleanup(func() { diffConfig, pushConfig, rootConfig = savedDiff, savedPush, savedRoot })
 
-	diffConfig.Source, diffConfig.Target, diffConfig.Filters, diffConfig.Colors = source, target, filters, false
+	diffConfig.Colors = false
 	rootConfig.Workspace, rootConfig.Tenant = "demo", false
+}
+
+// fakeKeyRotation is a key rotation server holding the settings of each workspace.
+type fakeKeyRotation map[string]*keyrotation.Config
+
+func (f fakeKeyRotation) Read(_ context.Context, wid string) (*keyrotation.Config, error) {
+	return f[wid], nil
+}
+
+func (f fakeKeyRotation) Write(_ context.Context, wid string, cfg *keyrotation.Config) error {
+	f[wid] = cfg
+	return nil
 }
 
 func monthly(enabled bool) *keyrotation.Config {
@@ -94,15 +106,13 @@ func TestRunDiffKeyRotationOnly(t *testing.T) {
 	want, err := keyrotation.TreeDiff(monthly(true), monthly(false), false)
 	require.NoError(t, err)
 
-	setDiffConfig(t, "local", "other@local", "key_rotation")
+	setFlags(t)
 
-	result, err := runDiff(context.Background(), app)
+	result, err := runDiff(context.Background(), app, scope{keyRotation: true, explicit: true}, "local", "other@local")
 	require.NoError(t, err)
 	require.Equal(t, "--- key_rotation (demo)\n"+want, result)
 
-	setDiffConfig(t, "local", "other@local", "clients", "key_rotation")
-
-	_, err = runDiff(context.Background(), app)
+	_, err = runDiff(context.Background(), app, scope{regular: true, keyRotation: true, explicit: true}, "local", "other@local")
 	require.ErrorContains(t, err, "failed to render template")
 }
 
@@ -110,27 +120,27 @@ func TestDiffKeyRotationsOtherProfile(t *testing.T) {
 	app := keyRotationApp(t, config.Configuration{Features: &config.Features{}})
 
 	t.Run("without --filter the diff carries a marker", func(t *testing.T) {
-		for _, sides := range [][2]string{{"local", "other@remote"}, {"other@merged", "local"}} {
-			setDiffConfig(t, sides[0], sides[1])
+		setFlags(t)
 
-			result, err := diffKeyRotations(context.Background(), app, scope{regular: true, keyRotation: true})
+		for _, sides := range [][2]string{{"local", "other@remote"}, {"other@merged", "local"}} {
+			result, err := diffKeyRotations(context.Background(), app, scope{regular: true, keyRotation: true}, sides[0], sides[1])
 			require.NoError(t, err, sides)
 			require.Equal(t, "--- key_rotation skipped: profile other has features.key_rotation disabled\n", result, sides)
 		}
 	})
 
 	t.Run("--filter key_rotation fails", func(t *testing.T) {
-		setDiffConfig(t, "local", "other@remote", "clients", "key_rotation")
+		setFlags(t)
 
-		_, err := diffKeyRotations(context.Background(), app, scope{regular: true, keyRotation: true, explicit: true})
+		_, err := diffKeyRotations(context.Background(), app, scope{regular: true, keyRotation: true, explicit: true}, "local", "other@remote")
 		require.EqualError(t, err, "profile other cannot diff key rotation: features.key_rotation is not enabled")
 	})
 
 	t.Run("an enabled profile without the manage_servers scope fails", func(t *testing.T) {
 		app := keyRotationApp(t, config.Configuration{Features: &config.Features{KeyRotation: true}, Client: client.DefaultConfig()})
-		setDiffConfig(t, "local", "other@remote")
+		setFlags(t)
 
-		_, err := diffKeyRotations(context.Background(), app, scope{regular: true, keyRotation: true})
+		_, err := diffKeyRotations(context.Background(), app, scope{regular: true, keyRotation: true}, "local", "other@remote")
 		require.EqualError(t, err, "profile other: features.key_rotation requires the manage_servers scope in client.scopes")
 	})
 }

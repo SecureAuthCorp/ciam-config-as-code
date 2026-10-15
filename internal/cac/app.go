@@ -5,6 +5,7 @@ import (
 	"github.com/cloudentity/cac/internal/cac/client"
 	"github.com/cloudentity/cac/internal/cac/config"
 	"github.com/cloudentity/cac/internal/cac/data"
+	"github.com/cloudentity/cac/internal/cac/keyrotation"
 	"github.com/cloudentity/cac/internal/cac/logging"
 	"github.com/cloudentity/cac/internal/cac/storage"
 	"golang.org/x/exp/slog"
@@ -17,7 +18,7 @@ type Application struct {
 	Client      api.Source
 	Storage     storage.Storage
 	Validator   data.ValidatorApi
-	KeyRotation *client.KeyRotationAPIStore
+	KeyRotation keyrotation.Remote
 }
 
 func InitApp(configPath string, profile string, tenant bool) (app *Application, err error) {

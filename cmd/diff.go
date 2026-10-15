@@ -43,6 +43,7 @@ Examples:
 		RunE: func(cmd *cobra.Command, args []string) error {
 			var (
 				app    *cac.Application
+				s      scope
 				result string
 				err    error
 			)
@@ -63,7 +64,11 @@ Examples:
 				return err
 			}
 
-			if result, err = runDiff(cmd.Context(), app); err != nil {
+			if s, err = scopeOf(app.Config.KeyRotationEnabled(), diffConfig.Filters); err != nil {
+				return err
+			}
+
+			if result, err = runDiff(cmd.Context(), app, s, diffConfig.Source, diffConfig.Target); err != nil {
 				return err
 			}
 
@@ -83,26 +88,21 @@ Examples:
 )
 
 // runDiff compares the configuration and the key rotation of the source and target, as scoped.
-func runDiff(ctx context.Context, app *cac.Application) (string, error) {
+func runDiff(ctx context.Context, app *cac.Application, s scope, sourceSpec, targetSpec string) (string, error) {
 	var (
 		result string
 		kr     string
 		source api.Source
 		target api.Source
-		s      scope
 		err    error
 	)
 
-	if s, err = scopeOf(app.Config.KeyRotationEnabled(), diffConfig.Filters); err != nil {
-		return "", err
-	}
-
 	if s.regular {
-		if source, err = app.PickSource(diffConfig.Source, rootConfig.Tenant); err != nil {
+		if source, err = app.PickSource(sourceSpec, rootConfig.Tenant); err != nil {
 			return "", err
 		}
 
-		if target, err = app.PickSource(diffConfig.Target, rootConfig.Tenant); err != nil {
+		if target, err = app.PickSource(targetSpec, rootConfig.Tenant); err != nil {
 			return "", err
 		}
 
@@ -120,7 +120,7 @@ func runDiff(ctx context.Context, app *cac.Application) (string, error) {
 	}
 
 	if s.keyRotation {
-		if kr, err = diffKeyRotations(ctx, app, s); err != nil {
+		if kr, err = diffKeyRotations(ctx, app, s, sourceSpec, targetSpec); err != nil {
 			return "", err
 		}
 	}

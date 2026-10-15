@@ -58,6 +58,17 @@ func keyRotationDir(conf *config.Configuration) (*keyrotation.DirStore, error) {
 	return keyrotation.NewDirStore(conf.Storage.DirPath), nil
 }
 
+// keyRotationService builds the key rotation service of the selected profile: its storage dirs and
+// its server.
+func keyRotationService(app *cac.Application) (*keyrotation.Service, error) {
+	dir, err := keyRotationDir(app.Config)
+	if err != nil {
+		return nil, err
+	}
+
+	return keyrotation.NewService(dir, app.KeyRotation), nil
+}
+
 // pullKeyRotations pulls key rotation after a plain pull: for the selected workspace, or in tenant
 // mode for every workspace of the tenant. data is what the regular pull read, nil when it was skipped.
 func pullKeyRotations(ctx context.Context, app *cac.Application, data models.Rfc7396PatchOperation) error {
@@ -209,7 +220,7 @@ func (sp sideSpec) side(app *cac.Application) (*keyrotation.Side, error) {
 
 // diffKeyRotations renders the key rotation diff of the selected workspace, or in tenant mode of every
 // workspace the source has. Target uses absent from the source are ignored, as in diff key-rotation.
-func diffKeyRotations(ctx context.Context, app *cac.Application, s scope) (string, error) {
+func diffKeyRotations(ctx context.Context, app *cac.Application, s scope, sourceSpec, targetSpec string) (string, error) {
 	var (
 		wids  = []string{rootConfig.Workspace}
 		specs [2]sideSpec
@@ -218,7 +229,7 @@ func diffKeyRotations(ctx context.Context, app *cac.Application, s scope) (strin
 	)
 
 	// both sides are gated before either is built, so a skipped diff needs no storage or client
-	for i, raw := range []string{diffConfig.Source, diffConfig.Target} {
+	for i, raw := range []string{sourceSpec, targetSpec} {
 		if specs[i].conf, specs[i].source, err = app.ResolveSource(raw); err != nil {
 			return "", err
 		}
