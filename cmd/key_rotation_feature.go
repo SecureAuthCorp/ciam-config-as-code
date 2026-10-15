@@ -115,30 +115,6 @@ func readKeyRotations(app *cac.Application) ([]keyrotation.WorkspaceConfig, erro
 	return items, nil
 }
 
-// warnIgnoredKeyRotation warns about local key rotation files a plain push skips because the feature
-// is disabled.
-func warnIgnoredKeyRotation(app *cac.Application) {
-	if app.Config.Storage == nil {
-		return
-	}
-
-	dir := keyrotation.NewDirStore(app.Config.Storage.DirPath)
-
-	wids, err := keyRotationWorkspaces(dir)
-	if err != nil {
-		slog.Debug("failed to look for key rotation files", "error", err)
-		return
-	}
-
-	for _, wid := range wids {
-		if !dir.Has(wid) {
-			continue
-		}
-
-		slog.Warn("key_rotation.yaml present but features.key_rotation is disabled; skipping", "workspace", wid)
-	}
-}
-
 // pushKeyRotations pushes key rotation, or with --dry-run writes it to --out, appending to an --out
 // file when appendFile is set because the regular dry-run output was written to it first.
 func pushKeyRotations(ctx context.Context, app *cac.Application, items []keyrotation.WorkspaceConfig, appendFile bool) error {

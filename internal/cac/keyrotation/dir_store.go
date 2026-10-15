@@ -126,11 +126,6 @@ func (d *DirStore) Workspaces() ([]string, error) {
 	return slices.Sorted(maps.Keys(ids)), nil
 }
 
-// Has reports whether any of the dirs has a key rotation file for the workspace.
-func (d *DirStore) Has(wid string) bool {
-	return slices.ContainsFunc(d.Dirs, func(dir string) bool { return d.has(dir, wid) })
-}
-
 func (d *DirStore) has(dir string, wid string) bool {
 	_, err := os.Stat(filepath.Join(d.dirPath(dir, wid), FileName))
 	return err == nil

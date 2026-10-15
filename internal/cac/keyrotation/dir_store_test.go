@@ -217,9 +217,4 @@ func TestDirStoreWorkspaces(t *testing.T) {
 	wids, err := store.Workspaces()
 	require.NoError(t, err)
 	require.Equal(t, []string{"a", "b"}, wids)
-
-	require.True(t, store.Has("a"))
-	require.True(t, store.Has("b"))
-	require.False(t, store.Has("c"))
-	require.False(t, store.Has("missing"))
 }

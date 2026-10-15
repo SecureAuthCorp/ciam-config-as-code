@@ -391,9 +391,8 @@ features:
   enables the feature without the `manage_servers` scope always fails the diff.
 
 With the feature disabled, `--filter key_rotation` fails with
-`--filter key_rotation requires features.key_rotation: true`, plain `pull` and `diff`
-ignore key rotation, and plain `push` warns about each `key_rotation.yaml` it skips:
-`key_rotation.yaml present but features.key_rotation is disabled; skipping`.
+`--filter key_rotation requires features.key_rotation: true`, and plain `pull`, `push`,
+and `diff` ignore key rotation.
 
 ## Templates
 

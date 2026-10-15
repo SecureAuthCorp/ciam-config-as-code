@@ -78,8 +78,6 @@ func runPush(ctx context.Context, app *cac.Application, s scope) error {
 		if krs, err = readKeyRotations(app); err != nil {
 			return err
 		}
-	} else if !app.Config.KeyRotationEnabled() {
-		warnIgnoredKeyRotation(app)
 	}
 
 	if s.regular {
