@@ -23,46 +23,31 @@ func TestDryRun(t *testing.T) {
 	t.Run("stdout", func(t *testing.T) {
 		var stdout bytes.Buffer
 
-		dryRun := &keyrotation.DryRun{Out: "-", Stdout: &stdout}
-		require.NoError(t, dryRun.Write("demo", cfg))
+		require.NoError(t, keyrotation.WriteDryRun("-", &stdout, []keyrotation.WorkspaceConfig{{WID: "demo", Config: cfg}}))
 		require.Equal(t, section, stdout.String())
 	})
 
 	t.Run("directory", func(t *testing.T) {
 		dir := t.TempDir()
 
-		dryRun := &keyrotation.DryRun{Out: dir}
-		require.NoError(t, dryRun.Write("demo", cfg))
+		require.NoError(t, keyrotation.WriteDryRun(dir, nil, []keyrotation.WorkspaceConfig{{WID: "demo", Config: cfg}}))
 
 		got, err := keyrotation.NewDirStore([]string{dir}).Read("demo")
 		require.NoError(t, err)
 		require.Equal(t, cfg, got)
 	})
 
-	t.Run("file after the regular output is appended to", func(t *testing.T) {
+	t.Run("file is appended to", func(t *testing.T) {
 		out := filepath.Join(t.TempDir(), "out.yaml")
 		require.NoError(t, os.WriteFile(out, []byte("name: demo\n"), 0644))
 
-		dryRun := &keyrotation.DryRun{Out: out, AppendFile: true}
-		require.NoError(t, dryRun.Write("demo", cfg))
-
-		bts, err := os.ReadFile(out)
-		require.NoError(t, err)
-		require.Equal(t, "name: demo\n"+section, string(bts))
-	})
-
-	t.Run("file without the regular output is replaced, then appended to", func(t *testing.T) {
-		out := filepath.Join(t.TempDir(), "out.yaml")
-		require.NoError(t, os.WriteFile(out, []byte("stale: true\n"), 0644))
-
-		dryRun := &keyrotation.DryRun{Out: out}
-		require.NoError(t, dryRun.WriteAll([]keyrotation.WorkspaceConfig{{WID: "demo", Config: cfg}, {WID: "other", Config: cfg}}))
-
-		bts, err := os.ReadFile(out)
-		require.NoError(t, err)
+		require.NoError(t, keyrotation.WriteDryRun(out, nil, []keyrotation.WorkspaceConfig{{WID: "demo", Config: cfg}, {WID: "other", Config: cfg}}))
 
 		other, err := keyrotation.DryRunSection("other", cfg)
 		require.NoError(t, err)
-		require.Equal(t, section+string(other), string(bts))
+
+		bts, err := os.ReadFile(out)
+		require.NoError(t, err)
+		require.Equal(t, "name: demo\n"+section+string(other), string(bts))
 	})
 }

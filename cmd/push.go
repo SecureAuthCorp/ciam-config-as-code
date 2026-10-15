@@ -2,6 +2,7 @@ package cmd
 
 import (
 	"context"
+	"os"
 
 	"github.com/cloudentity/acp-client-go/clients/hub/models"
 	"github.com/cloudentity/cac/internal/cac"
@@ -80,6 +81,12 @@ func runPush(ctx context.Context, app *cac.Application, s scope) error {
 		}
 	}
 
+	if pushConfig.DryRun {
+		if err = resetDryRunOut(pushConfig.Out); err != nil {
+			return err
+		}
+	}
+
 	if s.regular {
 		if err = pushConfiguration(ctx, app, pushConfig.Filters); err != nil {
 			return err
@@ -87,10 +94,24 @@ func runPush(ctx context.Context, app *cac.Application, s scope) error {
 	}
 
 	if s.keyRotation {
-		return pushKeyRotations(ctx, app, krs, s.regular)
+		return pushKeyRotations(ctx, app, krs)
 	}
 
 	return nil
+}
+
+// resetDryRunOut empties a flat --out file at the start of a dry run, so that each part of the run
+// writes after the previous one and a run with nothing to write leaves no stale output behind.
+func resetDryRunOut(out string) error {
+	if out == "-" {
+		return nil
+	}
+
+	if info, err := os.Stat(out); err == nil && info.IsDir() {
+		return nil
+	}
+
+	return errors.Wrap(os.WriteFile(out, nil, 0644), "failed to reset dry-run output file")
 }
 
 // pushConfiguration pushes the regular configuration, or writes it to --out with --dry-run.

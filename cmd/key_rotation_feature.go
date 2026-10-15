@@ -115,13 +115,10 @@ func readKeyRotations(app *cac.Application) ([]keyrotation.WorkspaceConfig, erro
 	return items, nil
 }
 
-// pushKeyRotations pushes key rotation, or with --dry-run writes it to --out, appending to an --out
-// file when appendFile is set because the regular dry-run output was written to it first.
-func pushKeyRotations(ctx context.Context, app *cac.Application, items []keyrotation.WorkspaceConfig, appendFile bool) error {
+// pushKeyRotations pushes key rotation, or with --dry-run writes it after the regular dry-run output.
+func pushKeyRotations(ctx context.Context, app *cac.Application, items []keyrotation.WorkspaceConfig) error {
 	if pushConfig.DryRun {
-		dryRun := &keyrotation.DryRun{Out: pushConfig.Out, Stdout: os.Stdout, AppendFile: appendFile}
-
-		return dryRun.WriteAll(items)
+		return keyrotation.WriteDryRun(pushConfig.Out, os.Stdout, items)
 	}
 
 	return keyrotation.Push(ctx, app.KeyRotation, items)

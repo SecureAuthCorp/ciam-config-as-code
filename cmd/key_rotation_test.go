@@ -101,6 +101,20 @@ func TestKeyRotationSubcommands(t *testing.T) {
 		require.Equal(t, string(section), string(bts))
 	})
 
+	t.Run("push --dry-run with nothing to push empties the file", func(t *testing.T) {
+		out := filepath.Join(t.TempDir(), "out.yaml")
+		require.NoError(t, os.WriteFile(out, []byte("stale: true\n"), 0644))
+		pushConfig.DryRun, pushConfig.Out = true, out
+		rootConfig.Workspace = "unconfigured"
+		t.Cleanup(func() { rootConfig.Workspace = "demo" })
+
+		require.NoError(t, runPush(ctx, app, s))
+
+		bts, err := os.ReadFile(out)
+		require.NoError(t, err)
+		require.Empty(t, bts)
+	})
+
 	t.Run("push", func(t *testing.T) {
 		pushConfig.DryRun = false
 

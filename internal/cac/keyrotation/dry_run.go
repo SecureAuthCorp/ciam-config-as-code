@@ -9,61 +9,50 @@ import (
 	"github.com/pkg/errors"
 )
 
-// DryRun writes key rotation settings next to the regular dry-run output: to
-// workspaces/<wid>/key_rotation.yaml when Out is an existing directory, otherwise as an extra YAML
-// document headed by a "# key_rotation (<wid>)" comment, to Stdout when Out is "-" or appended to the
-// Out file.
-type DryRun struct {
-	Out    string
-	Stdout io.Writer
-	// AppendFile makes the next write to a flat Out file append rather than replace it
-	AppendFile bool
-}
+// WriteDryRun writes the settings of each workspace instead of pushing them: to
+// <out>/workspaces/<wid>/key_rotation.yaml when out is an existing directory, otherwise as YAML
+// documents headed by a "# key_rotation (<wid>)" comment, to stdout when out is "-" or appended to
+// the out file after the regular dry-run output.
+func WriteDryRun(out string, stdout io.Writer, items []WorkspaceConfig) error {
+	if out != "-" {
+		if info, err := os.Stat(out); err == nil && info.IsDir() {
+			dir := NewDirStore([]string{out})
 
-// WriteAll writes the settings of each workspace.
-func (d *DryRun) WriteAll(items []WorkspaceConfig) error {
+			for _, item := range items {
+				if err = dir.Write(item.WID, item.Config); err != nil {
+					return err
+				}
+			}
+
+			return nil
+		}
+	}
+
+	var stream []byte
+
 	for _, item := range items {
-		if err := d.Write(item.WID, item.Config); err != nil {
+		section, err := DryRunSection(item.WID, item.Config)
+		if err != nil {
 			return err
 		}
+
+		stream = append(stream, section...)
 	}
 
-	return nil
-}
-
-func (d *DryRun) Write(wid string, cfg *Config) error {
-	if d.Out != "-" {
-		if info, err := os.Stat(d.Out); err == nil && info.IsDir() {
-			return NewDirStore([]string{d.Out}).Write(wid, cfg)
-		}
-	}
-
-	section, err := DryRunSection(wid, cfg)
-	if err != nil {
-		return err
-	}
-
-	if d.Out == "-" {
-		_, err = d.Stdout.Write(section)
+	if out == "-" {
+		_, err := stdout.Write(stream)
 		return errors.Wrap(err, "failed to write key rotation to stdout")
 	}
 
-	flags := os.O_WRONLY | os.O_CREATE | os.O_TRUNC
-	if d.AppendFile {
-		flags = os.O_WRONLY | os.O_CREATE | os.O_APPEND
-	}
-
-	file, err := os.OpenFile(d.Out, flags, 0644)
+	file, err := os.OpenFile(out, os.O_WRONLY|os.O_CREATE|os.O_APPEND, 0644)
 	if err != nil {
 		return errors.Wrap(err, "failed to open dry-run output file")
 	}
 
-	if _, err = file.Write(section); err != nil {
+	if _, err = file.Write(stream); err != nil {
 		_ = file.Close()
 		return errors.Wrap(err, "failed to write key rotation to file")
 	}
-
-	d.AppendFile = true
 
 	return errors.Wrap(file.Close(), "failed to write key rotation to file")
 }
