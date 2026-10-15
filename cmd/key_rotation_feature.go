@@ -1,6 +1,7 @@
 package cmd
 
-// Key rotation handling of the plain pull, push and diff commands, enabled by features.key_rotation.
+// Key rotation handling of pull, push and diff: with features.key_rotation or --filter key_rotation,
+// and in their key-rotation subcommands.
 
 import (
 	"context"
@@ -18,7 +19,7 @@ import (
 	"golang.org/x/exp/slog"
 )
 
-// keyRotationFilter is the --filter value that selects key rotation in plain pull, push and diff.
+// keyRotationFilter is the --filter value that selects key rotation in pull, push and diff.
 const keyRotationFilter = "key_rotation"
 
 // scope is what a pull, push or diff run handles.
@@ -58,7 +59,7 @@ func keyRotationDir(conf *config.Configuration) (*keyrotation.DirStore, error) {
 	return keyrotation.NewDirStore(conf.Storage.DirPath), nil
 }
 
-// pullKeyRotations pulls key rotation after a plain pull: for the selected workspace, or in tenant
+// pullKeyRotations pulls key rotation after the configuration: for the selected workspace, or in tenant
 // mode for every workspace of the tenant. data is what the regular pull read, nil when it was skipped.
 func pullKeyRotations(ctx context.Context, app *cac.Application, data models.Rfc7396PatchOperation) error {
 	var (
@@ -80,30 +81,28 @@ func pullKeyRotations(ctx context.Context, app *cac.Application, data models.Rfc
 	return keyrotation.Pull(ctx, app.KeyRotation, dir, wids)
 }
 
-// keyRotationWorkspaces returns the workspaces a plain push considers: the selected workspace, or in
-// tenant mode every workspace dir with a key rotation file.
-func keyRotationWorkspaces(dir *keyrotation.DirStore) ([]string, error) {
-	if rootConfig.Tenant {
-		return dir.Workspaces()
-	}
-
-	return []string{rootConfig.Workspace}, nil
-}
-
 // readKeyRotations reads and validates the local key rotation settings a push sends, before anything
-// is pushed.
+// is pushed: of the selected workspace, or in tenant mode of every workspace dir with a key rotation
+// file.
 func readKeyRotations(app *cac.Application) ([]keyrotation.WorkspaceConfig, error) {
-	dir, err := keyRotationDir(app.Config)
-	if err != nil {
+	var (
+		wids  = []string{rootConfig.Workspace}
+		dir   *keyrotation.DirStore
+		items []keyrotation.WorkspaceConfig
+		err   error
+	)
+
+	if dir, err = keyRotationDir(app.Config); err != nil {
 		return nil, err
 	}
 
-	wids, err := keyRotationWorkspaces(dir)
-	if err != nil {
-		return nil, err
+	if rootConfig.Tenant {
+		if wids, err = dir.Workspaces(); err != nil {
+			return nil, err
+		}
 	}
 
-	items, err := keyrotation.ReadAll(dir, wids)
+	items, err = keyrotation.ReadAll(dir, wids)
 	if err != nil {
 		return nil, err
 	}
