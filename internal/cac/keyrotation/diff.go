@@ -85,15 +85,7 @@ func (s *Side) Read(ctx context.Context, wid string) (*Config, error) {
 		}
 	}
 
-	cfg, err := s.Remote.Read(ctx, wid)
-
-	// a workspace the target lacks has no settings, so it diffs as all-source like the configuration
-	var notFound *keys.GetAutomaticKeyRotationNotFound
-	if errors.As(err, &notFound) {
-		return nil, nil
-	}
-
-	return cfg, err
+	return s.Remote.Read(ctx, wid)
 }
 
 // Workspaces lists the workspaces the side has key rotation for, in tenant mode.
@@ -139,7 +131,9 @@ func Diff(ctx context.Context, source, target *Side, wids []string, colors bool)
 			return "", err
 		}
 
-		if targetCfg, err = target.Read(ctx, wid); err != nil {
+		// a workspace the target lacks has no settings, so it diffs as all-source like the configuration
+		var notFound *keys.GetAutomaticKeyRotationNotFound
+		if targetCfg, err = target.Read(ctx, wid); err != nil && !errors.As(err, &notFound) {
 			return "", err
 		}
 

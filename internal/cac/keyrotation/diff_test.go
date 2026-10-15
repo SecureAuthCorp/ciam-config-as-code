@@ -66,20 +66,16 @@ func (f *fakeRemote) Write(_ context.Context, wid string, cfg *keyrotation.Confi
 }
 
 func TestSideRead(t *testing.T) {
-	t.Run("a workspace missing remotely has no settings", func(t *testing.T) {
+	t.Run("remote errors fail, including a missing workspace", func(t *testing.T) {
 		side := &keyrotation.Side{Remote: &fakeRemote{errs: map[string]error{
-			"missing": errors.Wrap(kclient.NewGetAutomaticKeyRotationNotFound(), "failed to read key rotation"),
+			"missing": kclient.NewGetAutomaticKeyRotationNotFound(),
+			"demo":    kclient.NewGetAutomaticKeyRotationForbidden(),
 		}}}
 
-		cfg, err := side.Read(context.Background(), "missing")
-		require.NoError(t, err)
-		require.Nil(t, cfg)
-	})
+		_, err := side.Read(context.Background(), "missing")
+		require.Error(t, err)
 
-	t.Run("other remote errors fail", func(t *testing.T) {
-		side := &keyrotation.Side{Remote: &fakeRemote{errs: map[string]error{"demo": kclient.NewGetAutomaticKeyRotationForbidden()}}}
-
-		_, err := side.Read(context.Background(), "demo")
+		_, err = side.Read(context.Background(), "demo")
 		require.Error(t, err)
 	})
 
@@ -138,7 +134,7 @@ func TestDiff(t *testing.T) {
 			// same settings: no section
 			"b": {Sig: &keyrotation.Rotation{Enabled: true, Cron: "0 0 1 * *"}},
 		},
-		errs: map[string]error{"a": kclient.NewGetAutomaticKeyRotationNotFound()},
+		errs: map[string]error{"a": errors.Wrap(kclient.NewGetAutomaticKeyRotationNotFound(), "failed to read key rotation")},
 	}}
 
 	result, err := keyrotation.Diff(context.Background(), source, target, []string{"a", "b"}, false)
@@ -148,6 +144,12 @@ func TestDiff(t *testing.T) {
 	_, err = keyrotation.Diff(context.Background(), source, &keyrotation.Side{Remote: &fakeRemote{
 		errs: map[string]error{"a": kclient.NewGetAutomaticKeyRotationForbidden()},
 	}}, []string{"a"}, false)
+	require.Error(t, err)
+
+	// only the target may lack the workspace
+	_, err = keyrotation.Diff(context.Background(), &keyrotation.Side{Remote: &fakeRemote{
+		errs: map[string]error{"a": kclient.NewGetAutomaticKeyRotationNotFound()},
+	}}, source, []string{"a"}, false)
 	require.Error(t, err)
 }
 

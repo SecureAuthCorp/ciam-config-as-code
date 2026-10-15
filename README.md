@@ -375,8 +375,8 @@ features:
 
   `--source` and `--target` map to key rotation as follows: `local` reads
   `key_rotation.yaml`, `remote` reads the server, and `merged` reads the local file,
-  falling back to the server when the workspace has none. A workspace missing on a side
-  has no settings there. With `--tenant` the source's workspaces are compared: the local
+  falling back to the server when the workspace has none. A workspace missing on the
+  target server has no settings there; one missing on the source server fails the diff. With `--tenant` the source's workspaces are compared: the local
   workspace directories that have the file for `local`, the workspaces of the tenant for
   `remote`, and both for `merged`.
 
