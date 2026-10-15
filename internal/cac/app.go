@@ -75,13 +75,15 @@ func InitApp(configPath string, profile string, tenant bool) (app *Application, 
 	return app, nil
 }
 
-func (a *Application) PickSource(source string, tenant bool) (api.Source, error) {
+// ResolveSource resolves a --source or --target value, "[profile@]source-type", to the profile's
+// configuration and the source type. Without a profile it refers to the selected one.
+func (a *Application) ResolveSource(spec string) (*config.Configuration, api.SourceType, error) {
 	var (
 		conf       *config.Configuration
 		sourceType api.SourceType
 		err        error
 
-		profile, sourceS, found = strings.Cut(source, "@")
+		profile, sourceS, found = strings.Cut(spec, "@")
 	)
 
 	if !found {
@@ -92,10 +94,19 @@ func (a *Application) PickSource(source string, tenant bool) (api.Source, error)
 	}
 
 	if conf, err = a.RootConfig.ForProfile(profile); err != nil {
-		return nil, err
+		return nil, "", err
 	}
 
 	if sourceType, err = api.SourceFromString(sourceS); err != nil {
+		return nil, "", err
+	}
+
+	return conf, sourceType, nil
+}
+
+func (a *Application) PickSource(source string, tenant bool) (api.Source, error) {
+	conf, sourceType, err := a.ResolveSource(source)
+	if err != nil {
 		return nil, err
 	}
 

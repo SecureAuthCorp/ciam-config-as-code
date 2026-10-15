@@ -7,12 +7,12 @@ import (
 	"fmt"
 	"os"
 	"slices"
-	"strings"
 
 	"github.com/cloudentity/acp-client-go/clients/hub/models"
 	"github.com/cloudentity/cac/internal/cac"
 	"github.com/cloudentity/cac/internal/cac/api"
 	"github.com/cloudentity/cac/internal/cac/client"
+	"github.com/cloudentity/cac/internal/cac/config"
 	"github.com/cloudentity/cac/internal/cac/keyrotation"
 	"github.com/pkg/errors"
 	"golang.org/x/exp/slog"
@@ -47,6 +47,15 @@ func scopeOf(enabled bool, filters []string) (scope, error) {
 		keyRotation: enabled && (len(filters) == 0 || named),
 		explicit:    named,
 	}, nil
+}
+
+// keyRotationDir returns the key rotation files of the profile.
+func keyRotationDir(conf *config.Configuration) (*keyrotation.DirStore, error) {
+	if conf.Storage == nil || len(conf.Storage.DirPath) == 0 {
+		return nil, errors.Errorf("no storage directories configured for profile %s", conf.Name)
+	}
+
+	return keyrotation.NewDirStore(conf.Storage.DirPath), nil
 }
 
 // pullKeyRotations pulls key rotation after a plain pull: for the selected workspace, or in tenant
@@ -137,114 +146,99 @@ func pushKeyRotations(ctx context.Context, svc *keyrotation.Service, items []key
 	return svc.Push(ctx, items)
 }
 
-// keyRotationDisabledError reports a diff side that needs the server of a profile that does not
-// enable key rotation.
-type keyRotationDisabledError struct {
-	profile string
+// sideSpec is a resolved --source or --target value of a diff.
+type sideSpec struct {
+	conf   *config.Configuration
+	source api.SourceType
 }
 
-func (e *keyRotationDisabledError) Error() string {
-	return fmt.Sprintf("profile %s cannot diff key rotation: features.key_rotation is not enabled", e.profile)
-}
-
-// newKeyRotationSide resolves a --source or --target value, "[profile@]source-type", like PickSource:
-// local reads the profile's storage dirs, remote the profile's server, and merged the local file,
-// falling back to the server when the workspace has none. It returns a *keyRotationDisabledError when
-// the side needs the server but its profile does not enable key rotation, and fails when the profile
-// enables it without the manage_servers scope.
-func newKeyRotationSide(app *cac.Application, spec string) (*keyrotation.Side, error) {
-	var (
-		side                    = &keyrotation.Side{}
-		profile, sourceS, found = strings.Cut(spec, "@")
-		sourceType              api.SourceType
-		err                     error
-	)
-
-	if !found {
-		sourceS, profile = profile, app.Config.Name
+// gate decides whether the key rotation of the side can be compared. A side reading the server of a
+// profile other than the selected one needs that profile to enable key rotation and to be valid: the
+// selected profile was checked when the run was scoped and validated by InitApp. When the profile does
+// not enable key rotation, gate fails if key rotation was asked for explicitly and otherwise returns
+// the marker the diff shows instead.
+func (sp sideSpec) gate(app *cac.Application, s scope) (skipped string, err error) {
+	if sp.source == api.SourceLocal || sp.conf.Name == app.Config.Name {
+		return "", nil
 	}
 
-	conf, err := app.RootConfig.ForProfile(profile)
+	if !sp.conf.KeyRotationEnabled() {
+		if s.explicit {
+			return "", errors.Errorf("profile %s cannot diff key rotation: features.key_rotation is not enabled", sp.conf.Name)
+		}
+
+		return keyrotation.Skipped(fmt.Sprintf("profile %s has features.key_rotation disabled", sp.conf.Name)), nil
+	}
+
+	return "", errors.Wrapf(sp.conf.Validate(), "profile %s", sp.conf.Name)
+}
+
+// side builds the key rotation side: local reads the profile's storage dirs, remote the profile's
+// server, and merged the local file, falling back to the server when the workspace has none.
+func (sp sideSpec) side(app *cac.Application) (*keyrotation.Side, error) {
+	var (
+		side = &keyrotation.Side{}
+		err  error
+	)
+
+	if sp.source != api.SourceRemote {
+		if side.Local, err = keyRotationDir(sp.conf); err != nil {
+			return nil, err
+		}
+	}
+
+	if sp.source == api.SourceLocal {
+		return side, nil
+	}
+
+	// the selected profile's client is already initialized; in tenant mode it is a tenant client
+	if sp.conf.Name == app.Config.Name {
+		side.Remote, side.Tenant = app.KeyRotation, app.Client
+		return side, nil
+	}
+
+	c, err := client.InitClient(sp.conf.Client)
 	if err != nil {
 		return nil, err
 	}
 
-	if sourceType, err = api.SourceFromString(sourceS); err != nil {
-		return nil, err
-	}
-
-	if sourceType != api.SourceLocal {
-		if !conf.KeyRotationEnabled() {
-			return nil, &keyRotationDisabledError{profile: profile}
-		}
-
-		// InitApp validated the selected profile only
-		if err = conf.Validate(); err != nil {
-			return nil, errors.Wrapf(err, "profile %s", profile)
-		}
-	}
-
-	if sourceType == api.SourceLocal || sourceType == api.SourceMerged {
-		if conf.Storage == nil || len(conf.Storage.DirPath) == 0 {
-			return nil, errors.Errorf("no storage directories configured for profile %s", profile)
-		}
-
-		side.Local = keyrotation.NewDirStore(conf.Storage.DirPath)
-	}
-
-	if sourceType == api.SourceRemote || sourceType == api.SourceMerged {
-		// the selected profile's client is already initialized; in tenant mode it is a tenant client
-		if conf.Name == app.Config.Name {
-			side.Remote, side.Tenant = app.KeyRotation, app.Client
-		} else {
-			c, err := client.InitClient(conf.Client)
-			if err != nil {
-				return nil, err
-			}
-
-			side.Remote, side.Tenant = c.KeyRotationStore(), c.Tenant()
-		}
-	}
+	side.Remote, side.Tenant = c.KeyRotationStore(), c.Tenant()
 
 	return side, nil
 }
 
 // diffKeyRotations renders the key rotation diff of the selected workspace, or in tenant mode of every
-// workspace the source has. Target uses absent from the source are ignored, as in diff key-rotation. A
-// side whose profile does not enable key rotation fails the diff when key rotation is asked for
-// explicitly, and otherwise renders a marker line instead.
+// workspace the source has. Target uses absent from the source are ignored, as in diff key-rotation.
 func diffKeyRotations(ctx context.Context, app *cac.Application, s scope) (string, error) {
 	var (
-		wids           = []string{rootConfig.Workspace}
-		source, target *keyrotation.Side
-		err            error
+		wids  = []string{rootConfig.Workspace}
+		specs [2]sideSpec
+		sides [2]*keyrotation.Side
+		err   error
 	)
 
-	if source, err = newKeyRotationSide(app, diffConfig.Source); err != nil {
-		return skipDisabledSide(s, err)
+	// both sides are gated before either is built, so a skipped diff needs no storage or client
+	for i, raw := range []string{diffConfig.Source, diffConfig.Target} {
+		if specs[i].conf, specs[i].source, err = app.ResolveSource(raw); err != nil {
+			return "", err
+		}
+
+		if skipped, err := specs[i].gate(app, s); err != nil || skipped != "" {
+			return skipped, err
+		}
 	}
 
-	if target, err = newKeyRotationSide(app, diffConfig.Target); err != nil {
-		return skipDisabledSide(s, err)
-	}
-
-	if rootConfig.Tenant {
-		if wids, err = source.Workspaces(ctx); err != nil {
+	for i := range specs {
+		if sides[i], err = specs[i].side(app); err != nil {
 			return "", err
 		}
 	}
 
-	return keyrotation.Diff(ctx, source, target, wids, diffConfig.Colors)
-}
-
-// skipDisabledSide returns err, except for a side whose profile does not enable key rotation while
-// key rotation is not asked for explicitly: the diff then gets a marker line instead of the section.
-func skipDisabledSide(s scope, err error) (string, error) {
-	var disabled *keyRotationDisabledError
-
-	if !errors.As(err, &disabled) || s.explicit {
-		return "", err
+	if rootConfig.Tenant {
+		if wids, err = sides[0].Workspaces(ctx); err != nil {
+			return "", err
+		}
 	}
 
-	return keyrotation.Skipped(fmt.Sprintf("profile %s has features.key_rotation disabled", disabled.profile)), nil
+	return keyrotation.Diff(ctx, sides[0], sides[1], wids, diffConfig.Colors)
 }
