@@ -1,13 +1,15 @@
 package cmd
 
 import (
+	"context"
+	"os"
+
 	"github.com/cloudentity/cac/internal/cac"
 	"github.com/cloudentity/cac/internal/cac/api"
 	"github.com/cloudentity/cac/internal/cac/diff"
 	"github.com/pkg/errors"
 	"github.com/spf13/cobra"
 	"golang.org/x/exp/slog"
-	"os"
 )
 
 var (
@@ -42,9 +44,6 @@ Examples:
 			var (
 				app    *cac.Application
 				result string
-				source api.Source
-				target api.Source
-				handle bool
 				err    error
 			)
 
@@ -64,34 +63,8 @@ Examples:
 				return err
 			}
 
-			if handle, err = keyRotationRequested(app.Config.KeyRotationEnabled(), diffConfig.Filters); err != nil {
+			if result, err = runDiff(cmd.Context(), app); err != nil {
 				return err
-			}
-
-			if source, err = app.PickSource(diffConfig.Source, rootConfig.Tenant); err != nil {
-				return err
-			}
-
-			if target, err = app.PickSource(diffConfig.Target, rootConfig.Tenant); err != nil {
-				return err
-			}
-
-			slog.Info("Comparing configurations", "source", source, "target", target)
-
-			if result, err = diff.Diff(cmd.Context(), source, target, rootConfig.Workspace,
-				diff.Colorize(diffConfig.Colors),
-				diff.OnlyPresent(diffConfig.OnlyPresent),
-				diff.Filters(diffConfig.Filters...),
-				diff.WithSecrets(diffConfig.WithSecrets),
-				diff.FilterVolatileFields(diffConfig.FilterVolatile),
-			); err != nil {
-				return err
-			}
-
-			if handle {
-				if result, err = diffKeyRotations(cmd.Context(), app, result); err != nil {
-					return err
-				}
 			}
 
 			return writeDiffResult(result)
@@ -108,6 +81,51 @@ Examples:
 		FilterVolatile bool
 	}
 )
+
+// runDiff compares the configuration of the source and target, unless --filter selects key rotation
+// alone, then appends the key rotation diff when it is requested.
+func runDiff(ctx context.Context, app *cac.Application) (string, error) {
+	var (
+		result string
+		source api.Source
+		target api.Source
+		handle bool
+		err    error
+	)
+
+	if handle, err = keyRotationRequested(app.Config.KeyRotationEnabled(), diffConfig.Filters); err != nil {
+		return "", err
+	}
+
+	// --filter key_rotation alone compares key rotation only, without reading the configuration
+	if !keyRotationOnly(diffConfig.Filters) {
+		if source, err = app.PickSource(diffConfig.Source, rootConfig.Tenant); err != nil {
+			return "", err
+		}
+
+		if target, err = app.PickSource(diffConfig.Target, rootConfig.Tenant); err != nil {
+			return "", err
+		}
+
+		slog.Info("Comparing configurations", "source", source, "target", target)
+
+		if result, err = diff.Diff(ctx, source, target, rootConfig.Workspace,
+			diff.Colorize(diffConfig.Colors),
+			diff.OnlyPresent(diffConfig.OnlyPresent),
+			diff.Filters(diffConfig.Filters...),
+			diff.WithSecrets(diffConfig.WithSecrets),
+			diff.FilterVolatileFields(diffConfig.FilterVolatile),
+		); err != nil {
+			return "", err
+		}
+	}
+
+	if handle {
+		return diffKeyRotations(ctx, app, result)
+	}
+
+	return result, nil
+}
 
 func writeDiffResult(result string) error {
 	if diffConfig.Out != "-" {

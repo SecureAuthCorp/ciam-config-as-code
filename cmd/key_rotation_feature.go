@@ -33,9 +33,9 @@ func keyRotationRequested(enabled bool, filters []string) (bool, error) {
 	return enabled && (len(filters) == 0 || slices.Contains(filters, keyRotationFilter)), nil
 }
 
-// keyRotationOnly reports whether --filter selects key rotation alone. Pull and push then skip the
-// regular pipeline, since its empty result is not a no-op: a pull rewrites server.yaml and an import
-// resets the workspace settings.
+// keyRotationOnly reports whether --filter selects key rotation alone. Pull, push and diff then skip
+// the regular pipeline, since its empty result is not a no-op: a pull rewrites server.yaml, an import
+// resets the workspace settings, and a diff still reads and renders the whole configuration.
 func keyRotationOnly(filters []string) bool {
 	return len(filters) > 0 && !slices.ContainsFunc(filters, func(f string) bool { return f != keyRotationFilter })
 }
