@@ -40,23 +40,23 @@ Examples:
   cac --config ./cac.yaml --profile dev --workspace demo push --method patch --filter clients,services`,
 		RunE: func(cmd *cobra.Command, args []string) error {
 			var (
-				app    *cac.Application
-				svc    *keyrotation.Service
-				krs    []keyrotation.WorkspaceConfig
-				handle bool
-				err    error
+				app *cac.Application
+				svc *keyrotation.Service
+				krs []keyrotation.WorkspaceConfig
+				s   scope
+				err error
 			)
 
 			if app, err = cac.InitApp(rootConfig.ConfigPath, rootConfig.Profile, rootConfig.Tenant); err != nil {
 				return err
 			}
 
-			if handle, err = keyRotationRequested(app.Config.KeyRotationEnabled(), pushConfig.Filters); err != nil {
+			if s, err = scopeOf(app.Config.KeyRotationEnabled(), pushConfig.Filters); err != nil {
 				return err
 			}
 
 			// key rotation is read and validated up front, so an invalid file fails before anything is pushed
-			if handle {
+			if s.keyRotation {
 				if svc, err = keyRotationService(app); err != nil {
 					return err
 				}
@@ -68,14 +68,14 @@ Examples:
 				warnIgnoredKeyRotation(app)
 			}
 
-			if !keyRotationOnly(pushConfig.Filters) {
+			if s.regular {
 				if err = pushConfiguration(cmd.Context(), app, pushConfig.Filters); err != nil {
 					return err
 				}
 			}
 
-			if handle {
-				return pushKeyRotations(cmd.Context(), svc, krs, !keyRotationOnly(pushConfig.Filters))
+			if s.keyRotation {
+				return pushKeyRotations(cmd.Context(), svc, krs, s.regular)
 			}
 
 			return nil

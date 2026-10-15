@@ -14,27 +14,28 @@ import (
 	"github.com/stretchr/testify/require"
 )
 
-func TestKeyRotationRequested(t *testing.T) {
+func TestScopeOf(t *testing.T) {
 	tcs := []struct {
-		name      string
-		enabled   bool
-		filters   []string
-		requested bool
-		err       string
+		name    string
+		enabled bool
+		filters []string
+		want    scope
+		err     string
 	}{
-		{name: "disabled without filters"},
+		{name: "disabled without filters", want: scope{regular: true}},
 		{name: "disabled with key_rotation", filters: []string{"key_rotation"}, err: "--filter key_rotation requires features.key_rotation: true"},
-		{name: "disabled with other filters", filters: []string{"clients"}},
+		{name: "disabled with other filters", filters: []string{"clients"}, want: scope{regular: true}},
 		{name: "disabled with mixed filters", filters: []string{"clients", "key_rotation"}, err: "--filter key_rotation requires features.key_rotation: true"},
-		{name: "enabled without filters", enabled: true, requested: true},
-		{name: "enabled with key_rotation", enabled: true, filters: []string{"key_rotation"}, requested: true},
-		{name: "enabled with other filters", enabled: true, filters: []string{"clients"}},
-		{name: "enabled with mixed filters", enabled: true, filters: []string{"key_rotation", "clients"}, requested: true},
+		{name: "enabled without filters", enabled: true, want: scope{regular: true, keyRotation: true}},
+		{name: "enabled with key_rotation", enabled: true, filters: []string{"key_rotation"}, want: scope{keyRotation: true, explicit: true}},
+		{name: "enabled with key_rotation twice", enabled: true, filters: []string{"key_rotation", "key_rotation"}, want: scope{keyRotation: true, explicit: true}},
+		{name: "enabled with other filters", enabled: true, filters: []string{"clients"}, want: scope{regular: true}},
+		{name: "enabled with mixed filters", enabled: true, filters: []string{"key_rotation", "clients"}, want: scope{regular: true, keyRotation: true, explicit: true}},
 	}
 
 	for _, tc := range tcs {
 		t.Run(tc.name, func(t *testing.T) {
-			requested, err := keyRotationRequested(tc.enabled, tc.filters)
+			got, err := scopeOf(tc.enabled, tc.filters)
 
 			if tc.err != "" {
 				require.EqualError(t, err, tc.err)
@@ -42,17 +43,9 @@ func TestKeyRotationRequested(t *testing.T) {
 			}
 
 			require.NoError(t, err)
-			require.Equal(t, tc.requested, requested)
+			require.Equal(t, tc.want, got)
 		})
 	}
-}
-
-func TestKeyRotationOnly(t *testing.T) {
-	require.False(t, keyRotationOnly(nil))
-	require.False(t, keyRotationOnly([]string{"clients"}))
-	require.False(t, keyRotationOnly([]string{"key_rotation", "clients"}))
-	require.True(t, keyRotationOnly([]string{"key_rotation"}))
-	require.True(t, keyRotationOnly([]string{"key_rotation", "key_rotation"}))
 }
 
 // keyRotationApp builds an application whose selected profile keeps its files in a temp dir and has
@@ -120,7 +113,7 @@ func TestDiffKeyRotationsOtherProfile(t *testing.T) {
 		for _, sides := range [][2]string{{"local", "other@remote"}, {"other@merged", "local"}} {
 			setDiffConfig(t, sides[0], sides[1])
 
-			result, err := diffKeyRotations(context.Background(), app, "normal")
+			result, err := diffKeyRotations(context.Background(), app, scope{regular: true, keyRotation: true}, "normal")
 			require.NoError(t, err, sides)
 			require.Equal(t, "normal\n--- key_rotation skipped: profile other has features.key_rotation disabled\n", result, sides)
 		}
@@ -129,7 +122,7 @@ func TestDiffKeyRotationsOtherProfile(t *testing.T) {
 	t.Run("--filter key_rotation fails", func(t *testing.T) {
 		setDiffConfig(t, "local", "other@remote", "clients", "key_rotation")
 
-		_, err := diffKeyRotations(context.Background(), app, "normal")
+		_, err := diffKeyRotations(context.Background(), app, scope{regular: true, keyRotation: true, explicit: true}, "normal")
 		require.EqualError(t, err, "profile other cannot diff key rotation: features.key_rotation is not enabled")
 	})
 
@@ -137,7 +130,7 @@ func TestDiffKeyRotationsOtherProfile(t *testing.T) {
 		app := keyRotationApp(t, config.Configuration{Features: &config.Features{KeyRotation: true}, Client: client.DefaultConfig()})
 		setDiffConfig(t, "local", "other@remote")
 
-		_, err := diffKeyRotations(context.Background(), app, "normal")
+		_, err := diffKeyRotations(context.Background(), app, scope{regular: true, keyRotation: true}, "normal")
 		require.EqualError(t, err, "profile other: features.key_rotation requires the manage_servers scope in client.scopes")
 	})
 }

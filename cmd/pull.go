@@ -29,21 +29,21 @@ Examples:
   cac --config ./cac.yaml --profile dev --tenant pull`,
 		RunE: func(cmd *cobra.Command, args []string) error {
 			var (
-				app    *cac.Application
-				data   models.Rfc7396PatchOperation
-				handle bool
-				err    error
+				app  *cac.Application
+				data models.Rfc7396PatchOperation
+				s    scope
+				err  error
 			)
 
 			if app, err = cac.InitApp(rootConfig.ConfigPath, rootConfig.Profile, rootConfig.Tenant); err != nil {
 				return err
 			}
 
-			if handle, err = keyRotationRequested(app.Config.KeyRotationEnabled(), pullConfig.Filters); err != nil {
+			if s, err = scopeOf(app.Config.KeyRotationEnabled(), pullConfig.Filters); err != nil {
 				return err
 			}
 
-			if !keyRotationOnly(pullConfig.Filters) {
+			if s.regular {
 				slog.
 					With("workspace", rootConfig.Workspace).
 					With("tenant", rootConfig.Tenant).
@@ -65,7 +65,7 @@ Examples:
 				}
 			}
 
-			if handle {
+			if s.keyRotation {
 				return pullKeyRotations(cmd.Context(), app, data)
 			}
 

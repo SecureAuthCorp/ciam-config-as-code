@@ -89,16 +89,15 @@ func runDiff(ctx context.Context, app *cac.Application) (string, error) {
 		result string
 		source api.Source
 		target api.Source
-		handle bool
+		s      scope
 		err    error
 	)
 
-	if handle, err = keyRotationRequested(app.Config.KeyRotationEnabled(), diffConfig.Filters); err != nil {
+	if s, err = scopeOf(app.Config.KeyRotationEnabled(), diffConfig.Filters); err != nil {
 		return "", err
 	}
 
-	// --filter key_rotation alone compares key rotation only, without reading the configuration
-	if !keyRotationOnly(diffConfig.Filters) {
+	if s.regular {
 		if source, err = app.PickSource(diffConfig.Source, rootConfig.Tenant); err != nil {
 			return "", err
 		}
@@ -120,8 +119,8 @@ func runDiff(ctx context.Context, app *cac.Application) (string, error) {
 		}
 	}
 
-	if handle {
-		return diffKeyRotations(ctx, app, result)
+	if s.keyRotation {
+		return diffKeyRotations(ctx, app, s, result)
 	}
 
 	return result, nil

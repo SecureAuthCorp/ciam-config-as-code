@@ -21,22 +21,32 @@ import (
 // keyRotationFilter is the --filter value that selects key rotation in plain pull, push and diff.
 const keyRotationFilter = "key_rotation"
 
-// keyRotationRequested reports whether a plain pull, push or diff also handles key rotation: the
-// feature is enabled and --filter is empty or names key_rotation. The regular pipeline ignores the
-// key_rotation filter, as it does any filter naming no configuration key.
-func keyRotationRequested(enabled bool, filters []string) (bool, error) {
-	if !enabled && slices.Contains(filters, keyRotationFilter) {
-		return false, errors.New("--filter key_rotation requires features.key_rotation: true")
-	}
-
-	return enabled && (len(filters) == 0 || slices.Contains(filters, keyRotationFilter)), nil
+// scope is what a pull, push or diff run handles.
+type scope struct {
+	regular     bool // the workspace or tenant configuration
+	keyRotation bool // workspaces/<wid>/key_rotation.yaml
+	explicit    bool // key rotation is asked for rather than included by features.key_rotation
 }
 
-// keyRotationOnly reports whether --filter selects key rotation alone. Pull, push and diff then skip
-// the regular pipeline, since its empty result is not a no-op: a pull rewrites server.yaml, an import
-// resets the workspace settings, and a diff still reads and renders the whole configuration.
-func keyRotationOnly(filters []string) bool {
-	return len(filters) > 0 && !slices.ContainsFunc(filters, func(f string) bool { return f != keyRotationFilter })
+// scopeOf decides the scope of a plain pull, push or diff. With the feature on, key rotation is
+// handled when --filter is empty or names key_rotation. --filter key_rotation alone skips the regular
+// configuration, whose empty result is not a no-op: a pull rewrites server.yaml, an import resets the
+// workspace settings, and a diff still reads and renders the whole configuration. Otherwise the
+// regular pipeline ignores the key_rotation filter, as it does any filter naming no configuration key.
+func scopeOf(enabled bool, filters []string) (scope, error) {
+	named := slices.Contains(filters, keyRotationFilter)
+
+	if named && !enabled {
+		return scope{}, errors.New("--filter key_rotation requires features.key_rotation: true")
+	}
+
+	only := named && !slices.ContainsFunc(filters, func(f string) bool { return f != keyRotationFilter })
+
+	return scope{
+		regular:     !only,
+		keyRotation: enabled && (len(filters) == 0 || named),
+		explicit:    named,
+	}, nil
 }
 
 // pullKeyRotations pulls key rotation after a plain pull: for the selected workspace, or in tenant
@@ -203,7 +213,7 @@ func newKeyRotationSide(app *cac.Application, spec string) (*keyrotation.Side, e
 // workspace the source has, to the result of a plain diff. Target uses absent from the source are
 // ignored, as in diff key-rotation. A side whose profile does not enable key rotation fails the diff
 // when --filter names key_rotation, and otherwise leaves a marker line in its place.
-func diffKeyRotations(ctx context.Context, app *cac.Application, result string) (string, error) {
+func diffKeyRotations(ctx context.Context, app *cac.Application, s scope, result string) (string, error) {
 	var (
 		wids           = []string{rootConfig.Workspace}
 		source, target *keyrotation.Side
@@ -211,11 +221,11 @@ func diffKeyRotations(ctx context.Context, app *cac.Application, result string) 
 	)
 
 	if source, err = newKeyRotationSide(app, diffConfig.Source); err != nil {
-		return skipDisabledSide(result, err)
+		return skipDisabledSide(s, result, err)
 	}
 
 	if target, err = newKeyRotationSide(app, diffConfig.Target); err != nil {
-		return skipDisabledSide(result, err)
+		return skipDisabledSide(s, result, err)
 	}
 
 	if rootConfig.Tenant {
@@ -228,11 +238,11 @@ func diffKeyRotations(ctx context.Context, app *cac.Application, result string) 
 }
 
 // skipDisabledSide returns err, except for a side whose profile does not enable key rotation while
-// --filter does not name key_rotation: the diff then gets a marker line instead of the section.
-func skipDisabledSide(result string, err error) (string, error) {
+// key rotation is not asked for explicitly: the diff then gets a marker line instead of the section.
+func skipDisabledSide(s scope, result string, err error) (string, error) {
 	var disabled *keyRotationDisabledError
 
-	if !errors.As(err, &disabled) || slices.Contains(diffConfig.Filters, keyRotationFilter) {
+	if !errors.As(err, &disabled) || s.explicit {
 		return result, err
 	}
 
