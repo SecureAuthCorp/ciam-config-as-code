@@ -306,6 +306,9 @@ Constraints:
   `@hourly` and the `L`, `W`, and `#` modifiers are supported; `@every` is not.
 - `starting_from` is optional and write-only: SecureAuth never returns it, so `pull`
   never writes it and `diff` ignores it. It is only honored when it is in the future.
+- `push` reads the remote settings first and skips a use whose `enabled` and `cron`
+  already match. A use that sets `starting_from` is always sent: SecureAuth never returns
+  it, so cac cannot tell whether it is already applied.
 - `scheduled_at` is read-only and rejected in the file.
 
 > **Note:** `push key-rotation` validates every cron before any API call,
@@ -339,8 +342,9 @@ features:
 - `push` reads and validates `key_rotation.yaml` before pushing anything, pushes it after
   the configuration, and skips it when the file is absent. With `--tenant` it pushes the
   file of every workspace directory that has one, including stale directories without
-  `server.yaml`: their PUT fails with a clear 404 after the import, and rerunning the push
-  is idempotent. `--method` and `--mode` do not apply to it: every key use in the file is replaced.
+  `server.yaml`: their key rotation request fails with a clear 404 after the import, and
+  rerunning the push is idempotent. `--method` and `--mode` do not apply to it: every key use
+  in the file that differs from the server is replaced.
 - `push --dry-run` writes the settings after the configuration. With `--out -` (stdout)
   or a file, each workspace is a separate YAML document:
 

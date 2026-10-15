@@ -114,17 +114,51 @@ func (s *Service) ReadAll(wids []string) ([]WorkspaceConfig, error) {
 	return out, nil
 }
 
-// Push writes the key rotation settings of each workspace to the server.
+// Push writes the key rotation settings of each workspace to the server. A use whose enabled and cron
+// already match the server is skipped, unless it sets starting_from: the server never returns it, so
+// such a use is always written in case it reschedules the rotation.
 func (s *Service) Push(ctx context.Context, items []WorkspaceConfig) error {
 	for _, item := range items {
-		if err := s.Remote.Write(ctx, item.WID, item.Config); err != nil {
+		remote, err := s.Remote.Read(ctx, item.WID)
+		if err != nil {
 			return err
 		}
 
-		slog.Info("Pushed key rotation", "workspace", item.WID, "uses", len(item.Config.Uses()))
+		if remote == nil {
+			remote = &Config{}
+		}
+
+		changed := &Config{
+			Sig: changedRotation(item.WID, UseSig, item.Config.Sig, remote.Sig),
+			Enc: changedRotation(item.WID, UseEnc, item.Config.Enc, remote.Enc),
+		}
+
+		if len(changed.Uses()) == 0 {
+			continue
+		}
+
+		if err = s.Remote.Write(ctx, item.WID, changed); err != nil {
+			return err
+		}
+
+		slog.Info("Pushed key rotation", "workspace", item.WID, "uses", len(changed.Uses()))
 	}
 
 	return nil
+}
+
+// changedRotation returns the local rotation of the use unless the server already has it.
+func changedRotation(wid, use string, local, remote *Rotation) *Rotation {
+	if local == nil {
+		return nil
+	}
+
+	if local.StartingFrom == nil && remote != nil && local.Enabled == remote.Enabled && local.Cron == remote.Cron {
+		slog.Info("Key rotation unchanged", "workspace", wid, "use", use)
+		return nil
+	}
+
+	return local
 }
 
 // Diff renders the difference between the local and remote key rotation settings of the workspace.

@@ -38,11 +38,13 @@ func TestTreeDiff(t *testing.T) {
 	})
 }
 
-// fakeRemote serves configs per workspace and records writes.
+// fakeRemote serves configs per workspace and records writes. errs fail reads and writes, writeErrs
+// writes only.
 type fakeRemote struct {
-	configs map[string]*keyrotation.Config
-	errs    map[string]error
-	writes  []keyrotation.WorkspaceConfig
+	configs   map[string]*keyrotation.Config
+	errs      map[string]error
+	writeErrs map[string]error
+	writes    []keyrotation.WorkspaceConfig
 }
 
 func (f *fakeRemote) Read(_ context.Context, wid string) (*keyrotation.Config, error) {
@@ -51,6 +53,10 @@ func (f *fakeRemote) Read(_ context.Context, wid string) (*keyrotation.Config, e
 
 func (f *fakeRemote) Write(_ context.Context, wid string, cfg *keyrotation.Config) error {
 	if err := f.errs[wid]; err != nil {
+		return err
+	}
+
+	if err := f.writeErrs[wid]; err != nil {
 		return err
 	}
 
