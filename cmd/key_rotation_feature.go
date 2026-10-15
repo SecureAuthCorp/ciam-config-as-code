@@ -134,10 +134,21 @@ func keyRotationRemoteAllowed(conf *config.Configuration) bool {
 	return conf.KeyRotationEnabled() && conf.Client != nil && slices.Contains(conf.Client.Scopes, config.ManageServersScope)
 }
 
+// keyRotationDisabledError reports a diff side that needs the server of a profile that does not
+// enable key rotation.
+type keyRotationDisabledError struct {
+	profile string
+}
+
+func (e *keyRotationDisabledError) Error() string {
+	return fmt.Sprintf("profile %s cannot diff key rotation: features.key_rotation is not enabled", e.profile)
+}
+
 // newKeyRotationSide resolves a --source or --target value, "[profile@]source-type", like PickSource:
 // local reads the profile's storage dirs, remote the profile's server, and merged the local file,
-// falling back to the server when the workspace has none. It returns nil, after a warning, when the
-// side needs the server but its profile does not allow key rotation.
+// falling back to the server when the workspace has none. It returns a *keyRotationDisabledError when
+// the side needs the server but its profile does not enable key rotation, and nil, after a warning,
+// when its client lacks the manage_servers scope.
 func newKeyRotationSide(app *cac.Application, spec string) (*keyrotation.Side, error) {
 	var (
 		side                    = &keyrotation.Side{}
@@ -159,6 +170,10 @@ func newKeyRotationSide(app *cac.Application, spec string) (*keyrotation.Side, e
 		return nil, err
 	}
 
+	if sourceType != api.SourceLocal && !conf.KeyRotationEnabled() {
+		return nil, &keyRotationDisabledError{profile: profile}
+	}
+
 	if sourceType == api.SourceLocal || sourceType == api.SourceMerged {
 		if conf.Storage == nil || len(conf.Storage.DirPath) == 0 {
 			return nil, errors.Errorf("no storage directories configured for profile %s", profile)
@@ -169,7 +184,7 @@ func newKeyRotationSide(app *cac.Application, spec string) (*keyrotation.Side, e
 
 	if sourceType == api.SourceRemote || sourceType == api.SourceMerged {
 		if !keyRotationRemoteAllowed(conf) {
-			slog.Warn(fmt.Sprintf("key rotation skipped for profile %s: features.key_rotation disabled or manage_servers scope missing", profile))
+			slog.Warn(fmt.Sprintf("key rotation skipped for profile %s: manage_servers scope missing", profile))
 			return nil, nil
 		}
 
@@ -191,7 +206,8 @@ func newKeyRotationSide(app *cac.Application, spec string) (*keyrotation.Side, e
 
 // diffKeyRotations appends the key rotation diff of the selected workspace, or in tenant mode of every
 // workspace the source has, to the result of a plain diff. Target uses absent from the source are
-// ignored, as in diff key-rotation.
+// ignored, as in diff key-rotation. A side whose profile does not enable key rotation fails the diff
+// when --filter names key_rotation, and otherwise leaves a marker line in its place.
 func diffKeyRotations(ctx context.Context, app *cac.Application, result string) (string, error) {
 	var (
 		wids           = []string{rootConfig.Workspace}
@@ -200,11 +216,11 @@ func diffKeyRotations(ctx context.Context, app *cac.Application, result string) 
 	)
 
 	if source, err = newKeyRotationSide(app, diffConfig.Source); err != nil || source == nil {
-		return result, err
+		return skipDisabledSide(result, err)
 	}
 
 	if target, err = newKeyRotationSide(app, diffConfig.Target); err != nil || target == nil {
-		return result, err
+		return skipDisabledSide(result, err)
 	}
 
 	if rootConfig.Tenant {
@@ -214,4 +230,16 @@ func diffKeyRotations(ctx context.Context, app *cac.Application, result string) 
 	}
 
 	return keyrotation.AppendDiff(ctx, result, source, target, wids, diffConfig.Colors)
+}
+
+// skipDisabledSide returns err, except for a side whose profile does not enable key rotation while
+// --filter does not name key_rotation: the diff then gets a marker line instead of the section.
+func skipDisabledSide(result string, err error) (string, error) {
+	var disabled *keyRotationDisabledError
+
+	if !errors.As(err, &disabled) || slices.Contains(diffConfig.Filters, keyRotationFilter) {
+		return result, err
+	}
+
+	return keyrotation.AppendSkipped(result, fmt.Sprintf("profile %s has features.key_rotation disabled", disabled.profile)), nil
 }

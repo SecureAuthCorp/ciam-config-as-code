@@ -157,9 +157,19 @@ func appendSection(result, wid, d string) string {
 		return result
 	}
 
+	return appendLines(result, fmt.Sprintf("--- key_rotation (%s)\n", wid)+d)
+}
+
+// AppendSkipped appends a "--- key_rotation skipped: <reason>" line, so that key rotation that could
+// not be compared shows up in the diff rather than being silently left out.
+func AppendSkipped(result, reason string) string {
+	return appendLines(result, fmt.Sprintf("--- key_rotation skipped: %s\n", reason))
+}
+
+func appendLines(result, lines string) string {
 	if result != "" && !strings.HasSuffix(result, "\n") {
 		result += "\n"
 	}
 
-	return result + fmt.Sprintf("--- key_rotation (%s)\n", wid) + d
+	return result + lines
 }

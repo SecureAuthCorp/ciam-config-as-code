@@ -373,6 +373,11 @@ features:
   are compared: the local workspace directories that have the file for `local`, the
   workspaces of the tenant for `remote`, and both for `merged`.
 
+  A `remote` or `merged` side of a profile without `features.key_rotation` fails the
+  diff when `--filter` names `key_rotation`. Otherwise the diff shows
+  `--- key_rotation skipped: profile <name> has features.key_rotation disabled`
+  in place of the key rotation sections and still exits 0.
+
 With the feature disabled, `--filter key_rotation` fails with
 `--filter key_rotation requires features.key_rotation: true`, plain `pull` and `diff`
 ignore key rotation, and plain `push` warns about each `key_rotation.yaml` it skips:

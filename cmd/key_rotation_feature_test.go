@@ -138,3 +138,24 @@ func TestRunDiffKeyRotationOnly(t *testing.T) {
 	_, err = runDiff(context.Background(), app)
 	require.ErrorContains(t, err, "failed to render template")
 }
+
+func TestDiffKeyRotationsDisabledProfile(t *testing.T) {
+	app := keyRotationApp(t, config.Configuration{Features: &config.Features{}})
+
+	t.Run("without --filter the diff carries a marker", func(t *testing.T) {
+		for _, sides := range [][2]string{{"local", "other@remote"}, {"other@merged", "local"}} {
+			setDiffConfig(t, sides[0], sides[1])
+
+			result, err := diffKeyRotations(context.Background(), app, "normal")
+			require.NoError(t, err, sides)
+			require.Equal(t, "normal\n--- key_rotation skipped: profile other has features.key_rotation disabled\n", result, sides)
+		}
+	})
+
+	t.Run("--filter key_rotation fails", func(t *testing.T) {
+		setDiffConfig(t, "local", "other@remote", "clients", "key_rotation")
+
+		_, err := diffKeyRotations(context.Background(), app, "normal")
+		require.EqualError(t, err, "profile other cannot diff key rotation: features.key_rotation is not enabled")
+	})
+}

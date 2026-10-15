@@ -145,6 +145,12 @@ func TestAppendDiff(t *testing.T) {
 	require.Error(t, err)
 }
 
+func TestAppendSkipped(t *testing.T) {
+	require.Equal(t, "--- key_rotation skipped: why\n", keyrotation.AppendSkipped("", "why"))
+	require.Equal(t, "normal\n--- key_rotation skipped: why\n", keyrotation.AppendSkipped("normal", "why"))
+	require.Equal(t, "normal\n--- key_rotation skipped: why\n", keyrotation.AppendSkipped("normal\n", "why"))
+}
+
 type fakeSource struct {
 	data  models.Rfc7396PatchOperation
 	reads int
