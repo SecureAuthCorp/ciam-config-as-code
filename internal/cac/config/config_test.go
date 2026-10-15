@@ -305,7 +305,7 @@ func TestValidateConfiguration(t *testing.T) {
 
 		conf, err := rootConf.ForProfile("")
 		require.NoError(t, err)
-		require.NotContains(t, conf.Client.Scopes, config.ManageServersScope)
+		require.NotContains(t, conf.Client.Scopes, "manage_servers")
 		require.NoError(t, conf.Validate())
 	})
 }

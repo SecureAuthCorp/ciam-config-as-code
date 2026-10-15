@@ -376,7 +376,8 @@ features:
   A `remote` or `merged` side of a profile without `features.key_rotation` fails the
   diff when `--filter` names `key_rotation`. Otherwise the diff shows
   `--- key_rotation skipped: profile <name> has features.key_rotation disabled`
-  in place of the key rotation sections and still exits 0.
+  in place of the key rotation sections and still exits 0. A side of a profile that
+  enables the feature without the `manage_servers` scope always fails the diff.
 
 With the feature disabled, `--filter key_rotation` fails with
 `--filter key_rotation requires features.key_rotation: true`, plain `pull` and `diff`

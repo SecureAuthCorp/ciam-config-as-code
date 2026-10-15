@@ -55,32 +55,6 @@ func TestKeyRotationOnly(t *testing.T) {
 	require.True(t, keyRotationOnly([]string{"key_rotation", "key_rotation"}))
 }
 
-func TestKeyRotationRemoteAllowed(t *testing.T) {
-	withScopes := func(scopes ...string) *client.Configuration {
-		c := client.DefaultConfig()
-		c.Scopes = scopes
-		return c
-	}
-
-	tcs := []struct {
-		name string
-		conf *config.Configuration
-		want bool
-	}{
-		{"enabled with manage_servers", &config.Configuration{Features: &config.Features{KeyRotation: true}, Client: withScopes("manage_configuration", "manage_servers")}, true},
-		{"enabled without manage_servers", &config.Configuration{Features: &config.Features{KeyRotation: true}, Client: withScopes("manage_configuration")}, false},
-		{"enabled without client", &config.Configuration{Features: &config.Features{KeyRotation: true}}, false},
-		{"disabled with manage_servers", &config.Configuration{Features: &config.Features{}, Client: withScopes("manage_servers")}, false},
-		{"no features", &config.Configuration{Client: withScopes("manage_servers")}, false},
-	}
-
-	for _, tc := range tcs {
-		t.Run(tc.name, func(t *testing.T) {
-			require.Equal(t, tc.want, keyRotationRemoteAllowed(tc.conf))
-		})
-	}
-}
-
 // keyRotationApp builds an application whose selected profile keeps its files in a temp dir and has
 // key rotation on, next to the given other profile, so that diffs between local sides need no server.
 func keyRotationApp(t *testing.T, other config.Configuration) *cac.Application {
@@ -139,7 +113,7 @@ func TestRunDiffKeyRotationOnly(t *testing.T) {
 	require.ErrorContains(t, err, "failed to render template")
 }
 
-func TestDiffKeyRotationsDisabledProfile(t *testing.T) {
+func TestDiffKeyRotationsOtherProfile(t *testing.T) {
 	app := keyRotationApp(t, config.Configuration{Features: &config.Features{}})
 
 	t.Run("without --filter the diff carries a marker", func(t *testing.T) {
@@ -157,5 +131,13 @@ func TestDiffKeyRotationsDisabledProfile(t *testing.T) {
 
 		_, err := diffKeyRotations(context.Background(), app, "normal")
 		require.EqualError(t, err, "profile other cannot diff key rotation: features.key_rotation is not enabled")
+	})
+
+	t.Run("an enabled profile without the manage_servers scope fails", func(t *testing.T) {
+		app := keyRotationApp(t, config.Configuration{Features: &config.Features{KeyRotation: true}, Client: client.DefaultConfig()})
+		setDiffConfig(t, "local", "other@remote")
+
+		_, err := diffKeyRotations(context.Background(), app, "normal")
+		require.EqualError(t, err, "profile other: features.key_rotation requires the manage_servers scope in client.scopes")
 	})
 }

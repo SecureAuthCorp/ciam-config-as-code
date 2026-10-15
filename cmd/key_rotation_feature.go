@@ -13,7 +13,6 @@ import (
 	"github.com/cloudentity/cac/internal/cac"
 	"github.com/cloudentity/cac/internal/cac/api"
 	"github.com/cloudentity/cac/internal/cac/client"
-	"github.com/cloudentity/cac/internal/cac/config"
 	"github.com/cloudentity/cac/internal/cac/keyrotation"
 	"github.com/pkg/errors"
 	"golang.org/x/exp/slog"
@@ -128,12 +127,6 @@ func pushKeyRotations(ctx context.Context, svc *keyrotation.Service, items []key
 	return svc.Push(ctx, items)
 }
 
-// keyRotationRemoteAllowed reports whether the keys API may be called with the profile's client: the
-// profile enables features.key_rotation and its client has the manage_servers scope.
-func keyRotationRemoteAllowed(conf *config.Configuration) bool {
-	return conf.KeyRotationEnabled() && conf.Client != nil && slices.Contains(conf.Client.Scopes, config.ManageServersScope)
-}
-
 // keyRotationDisabledError reports a diff side that needs the server of a profile that does not
 // enable key rotation.
 type keyRotationDisabledError struct {
@@ -147,8 +140,8 @@ func (e *keyRotationDisabledError) Error() string {
 // newKeyRotationSide resolves a --source or --target value, "[profile@]source-type", like PickSource:
 // local reads the profile's storage dirs, remote the profile's server, and merged the local file,
 // falling back to the server when the workspace has none. It returns a *keyRotationDisabledError when
-// the side needs the server but its profile does not enable key rotation, and nil, after a warning,
-// when its client lacks the manage_servers scope.
+// the side needs the server but its profile does not enable key rotation, and fails when the profile
+// enables it without the manage_servers scope.
 func newKeyRotationSide(app *cac.Application, spec string) (*keyrotation.Side, error) {
 	var (
 		side                    = &keyrotation.Side{}
@@ -170,8 +163,15 @@ func newKeyRotationSide(app *cac.Application, spec string) (*keyrotation.Side, e
 		return nil, err
 	}
 
-	if sourceType != api.SourceLocal && !conf.KeyRotationEnabled() {
-		return nil, &keyRotationDisabledError{profile: profile}
+	if sourceType != api.SourceLocal {
+		if !conf.KeyRotationEnabled() {
+			return nil, &keyRotationDisabledError{profile: profile}
+		}
+
+		// InitApp validated the selected profile only
+		if err = conf.Validate(); err != nil {
+			return nil, errors.Wrapf(err, "profile %s", profile)
+		}
 	}
 
 	if sourceType == api.SourceLocal || sourceType == api.SourceMerged {
@@ -183,11 +183,6 @@ func newKeyRotationSide(app *cac.Application, spec string) (*keyrotation.Side, e
 	}
 
 	if sourceType == api.SourceRemote || sourceType == api.SourceMerged {
-		if !keyRotationRemoteAllowed(conf) {
-			slog.Warn(fmt.Sprintf("key rotation skipped for profile %s: manage_servers scope missing", profile))
-			return nil, nil
-		}
-
 		// the selected profile's client is already initialized; in tenant mode it is a tenant client
 		if conf.Name == app.Config.Name {
 			side.Remote, side.Tenant = app.KeyRotation, app.Client
@@ -215,11 +210,11 @@ func diffKeyRotations(ctx context.Context, app *cac.Application, result string) 
 		err            error
 	)
 
-	if source, err = newKeyRotationSide(app, diffConfig.Source); err != nil || source == nil {
+	if source, err = newKeyRotationSide(app, diffConfig.Source); err != nil {
 		return skipDisabledSide(result, err)
 	}
 
-	if target, err = newKeyRotationSide(app, diffConfig.Target); err != nil || target == nil {
+	if target, err = newKeyRotationSide(app, diffConfig.Target); err != nil {
 		return skipDisabledSide(result, err)
 	}
 

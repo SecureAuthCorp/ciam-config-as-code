@@ -26,8 +26,8 @@ var (
 	}
 )
 
-// ManageServersScope is the scope the system keys API behind key rotation requires.
-const ManageServersScope = "manage_servers"
+// manageServersScope is the scope the system keys API behind key rotation requires.
+const manageServersScope = "manage_servers"
 
 // Features toggles optional behaviour of the plain pull, push and diff commands.
 type Features struct {
@@ -71,7 +71,7 @@ func (c *Configuration) KeyRotationEnabled() bool {
 
 // Validate checks settings that only make sense together.
 func (c *Configuration) Validate() error {
-	if c.KeyRotationEnabled() && (c.Client == nil || !slices.Contains(c.Client.Scopes, ManageServersScope)) {
+	if c.KeyRotationEnabled() && (c.Client == nil || !slices.Contains(c.Client.Scopes, manageServersScope)) {
 		return errors.New("features.key_rotation requires the manage_servers scope in client.scopes")
 	}
 
