@@ -292,6 +292,10 @@ cac --config ./cac.yaml --profile dev --workspace demo diff key-rotation
 The system workspace client used by cac needs the `manage_servers` scope for key
 rotation, in addition to `manage_configuration`: add it to `client.scopes` in the
 [configuration](#configuration).
+`manage_servers` is broad: it also allows creating and deleting workspaces, and there is
+no read-only alternative today. Every call cac makes in a run uses the same token, so the
+whole run holds that scope. If your main CI client should stay narrow, manage key
+rotation from a dedicated profile with its own client.
 
 Constraints:
 
