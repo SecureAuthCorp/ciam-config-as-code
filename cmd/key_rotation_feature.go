@@ -209,11 +209,11 @@ func newKeyRotationSide(app *cac.Application, spec string) (*keyrotation.Side, e
 	return side, nil
 }
 
-// diffKeyRotations appends the key rotation diff of the selected workspace, or in tenant mode of every
-// workspace the source has, to the result of a plain diff. Target uses absent from the source are
-// ignored, as in diff key-rotation. A side whose profile does not enable key rotation fails the diff
-// when --filter names key_rotation, and otherwise leaves a marker line in its place.
-func diffKeyRotations(ctx context.Context, app *cac.Application, s scope, result string) (string, error) {
+// diffKeyRotations renders the key rotation diff of the selected workspace, or in tenant mode of every
+// workspace the source has. Target uses absent from the source are ignored, as in diff key-rotation. A
+// side whose profile does not enable key rotation fails the diff when key rotation is asked for
+// explicitly, and otherwise renders a marker line instead.
+func diffKeyRotations(ctx context.Context, app *cac.Application, s scope) (string, error) {
 	var (
 		wids           = []string{rootConfig.Workspace}
 		source, target *keyrotation.Side
@@ -221,11 +221,11 @@ func diffKeyRotations(ctx context.Context, app *cac.Application, s scope, result
 	)
 
 	if source, err = newKeyRotationSide(app, diffConfig.Source); err != nil {
-		return skipDisabledSide(s, result, err)
+		return skipDisabledSide(s, err)
 	}
 
 	if target, err = newKeyRotationSide(app, diffConfig.Target); err != nil {
-		return skipDisabledSide(s, result, err)
+		return skipDisabledSide(s, err)
 	}
 
 	if rootConfig.Tenant {
@@ -234,17 +234,17 @@ func diffKeyRotations(ctx context.Context, app *cac.Application, s scope, result
 		}
 	}
 
-	return keyrotation.AppendDiff(ctx, result, source, target, wids, diffConfig.Colors)
+	return keyrotation.Diff(ctx, source, target, wids, diffConfig.Colors)
 }
 
 // skipDisabledSide returns err, except for a side whose profile does not enable key rotation while
 // key rotation is not asked for explicitly: the diff then gets a marker line instead of the section.
-func skipDisabledSide(s scope, result string, err error) (string, error) {
+func skipDisabledSide(s scope, err error) (string, error) {
 	var disabled *keyRotationDisabledError
 
 	if !errors.As(err, &disabled) || s.explicit {
-		return result, err
+		return "", err
 	}
 
-	return keyrotation.AppendSkipped(result, fmt.Sprintf("profile %s has features.key_rotation disabled", disabled.profile)), nil
+	return keyrotation.Skipped(fmt.Sprintf("profile %s has features.key_rotation disabled", disabled.profile)), nil
 }

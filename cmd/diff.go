@@ -82,11 +82,11 @@ Examples:
 	}
 )
 
-// runDiff compares the configuration of the source and target, unless --filter selects key rotation
-// alone, then appends the key rotation diff when it is requested.
+// runDiff compares the configuration and the key rotation of the source and target, as scoped.
 func runDiff(ctx context.Context, app *cac.Application) (string, error) {
 	var (
 		result string
+		kr     string
 		source api.Source
 		target api.Source
 		s      scope
@@ -120,10 +120,13 @@ func runDiff(ctx context.Context, app *cac.Application) (string, error) {
 	}
 
 	if s.keyRotation {
-		return diffKeyRotations(ctx, app, s, result)
+		if kr, err = diffKeyRotations(ctx, app, s); err != nil {
+			return "", err
+		}
 	}
 
-	return result, nil
+	// a non-empty configuration diff ends with a newline, so the key rotation lines start their own
+	return result + kr, nil
 }
 
 func writeDiffResult(result string) error {

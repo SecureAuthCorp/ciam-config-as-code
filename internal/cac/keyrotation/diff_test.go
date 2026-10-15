@@ -127,7 +127,7 @@ func TestSideWorkspaces(t *testing.T) {
 	require.Equal(t, []string{"a", "b", "c"}, wids)
 }
 
-func TestAppendDiff(t *testing.T) {
+func TestDiff(t *testing.T) {
 	dir := t.TempDir()
 	require.NoError(t, keyrotation.NewDirStore([]string{dir}).Write("a", &keyrotation.Config{Sig: &keyrotation.Rotation{Enabled: true, Cron: "0 0 1 * *"}}))
 	require.NoError(t, keyrotation.NewDirStore([]string{dir}).Write("b", &keyrotation.Config{Sig: &keyrotation.Rotation{Enabled: true, Cron: "0 0 1 * *"}}))
@@ -141,20 +141,18 @@ func TestAppendDiff(t *testing.T) {
 		errs: map[string]error{"a": kclient.NewGetAutomaticKeyRotationNotFound()},
 	}}
 
-	result, err := keyrotation.AppendDiff(context.Background(), "normal", source, target, []string{"a", "b"}, false)
+	result, err := keyrotation.Diff(context.Background(), source, target, []string{"a", "b"}, false)
 	require.NoError(t, err)
-	require.Equal(t, "normal\n--- key_rotation (a)\n"+treeDiff(t, &keyrotation.Config{Sig: &keyrotation.Rotation{Enabled: true, Cron: "0 0 1 * *"}}, nil), result)
+	require.Equal(t, "--- key_rotation (a)\n"+treeDiff(t, &keyrotation.Config{Sig: &keyrotation.Rotation{Enabled: true, Cron: "0 0 1 * *"}}, nil), result)
 
-	_, err = keyrotation.AppendDiff(context.Background(), "", source, &keyrotation.Side{Remote: &fakeRemote{
+	_, err = keyrotation.Diff(context.Background(), source, &keyrotation.Side{Remote: &fakeRemote{
 		errs: map[string]error{"a": kclient.NewGetAutomaticKeyRotationForbidden()},
 	}}, []string{"a"}, false)
 	require.Error(t, err)
 }
 
-func TestAppendSkipped(t *testing.T) {
-	require.Equal(t, "--- key_rotation skipped: why\n", keyrotation.AppendSkipped("", "why"))
-	require.Equal(t, "normal\n--- key_rotation skipped: why\n", keyrotation.AppendSkipped("normal", "why"))
-	require.Equal(t, "normal\n--- key_rotation skipped: why\n", keyrotation.AppendSkipped("normal\n", "why"))
+func TestSkipped(t *testing.T) {
+	require.Equal(t, "--- key_rotation skipped: why\n", keyrotation.Skipped("why"))
 }
 
 type fakeSource struct {

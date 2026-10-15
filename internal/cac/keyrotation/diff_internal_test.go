@@ -34,11 +34,3 @@ func TestDiffConfigs(t *testing.T) {
 		require.Equal(t, &Config{Sig: &Rotation{Enabled: false, Cron: "0 0 1 * *"}}, target)
 	})
 }
-
-func TestAppendSection(t *testing.T) {
-	require.Equal(t, "normal\n", appendSection("normal\n", "demo", ""))
-	require.Equal(t, "--- key_rotation (demo)\nkr\n", appendSection("", "demo", "kr\n"))
-	require.Equal(t, "normal\n--- key_rotation (demo)\nkr\n", appendSection("normal", "demo", "kr\n"))
-	require.Equal(t, "normal\n--- key_rotation (a)\nkr\n--- key_rotation (b)\nkr\n",
-		appendSection(appendSection("normal\n", "a", "kr\n"), "b", "kr\n"))
-}

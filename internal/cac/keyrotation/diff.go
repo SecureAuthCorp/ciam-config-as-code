@@ -123,9 +123,11 @@ func (s *Side) Workspaces(ctx context.Context) ([]string, error) {
 	return slices.Compact(wids), nil
 }
 
-// AppendDiff appends to result the key rotation diff of each workspace, each non-empty one under a
+// Diff renders the key rotation diff of each workspace, each non-empty one under a
 // "--- key_rotation (<wid>)" line. Target uses absent from the source are ignored.
-func AppendDiff(ctx context.Context, result string, source, target *Side, wids []string, colors bool) (string, error) {
+func Diff(ctx context.Context, source, target *Side, wids []string, colors bool) (string, error) {
+	var out strings.Builder
+
 	for _, wid := range wids {
 		var (
 			sourceCfg, targetCfg *Config
@@ -145,31 +147,16 @@ func AppendDiff(ctx context.Context, result string, source, target *Side, wids [
 			return "", err
 		}
 
-		result = appendSection(result, wid, d)
+		if d != "" {
+			fmt.Fprintf(&out, "--- key_rotation (%s)\n%s", wid, d)
+		}
 	}
 
-	return result, nil
+	return out.String(), nil
 }
 
-// appendSection appends a non-empty key rotation diff under a "--- key_rotation (<wid>)" line.
-func appendSection(result, wid, d string) string {
-	if d == "" {
-		return result
-	}
-
-	return appendLines(result, fmt.Sprintf("--- key_rotation (%s)\n", wid)+d)
-}
-
-// AppendSkipped appends a "--- key_rotation skipped: <reason>" line, so that key rotation that could
-// not be compared shows up in the diff rather than being silently left out.
-func AppendSkipped(result, reason string) string {
-	return appendLines(result, fmt.Sprintf("--- key_rotation skipped: %s\n", reason))
-}
-
-func appendLines(result, lines string) string {
-	if result != "" && !strings.HasSuffix(result, "\n") {
-		result += "\n"
-	}
-
-	return result + lines
+// Skipped renders a "--- key_rotation skipped: <reason>" line, so that key rotation that could not be
+// compared shows up in the diff rather than being silently left out.
+func Skipped(reason string) string {
+	return fmt.Sprintf("--- key_rotation skipped: %s\n", reason)
 }

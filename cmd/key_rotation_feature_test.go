@@ -113,16 +113,16 @@ func TestDiffKeyRotationsOtherProfile(t *testing.T) {
 		for _, sides := range [][2]string{{"local", "other@remote"}, {"other@merged", "local"}} {
 			setDiffConfig(t, sides[0], sides[1])
 
-			result, err := diffKeyRotations(context.Background(), app, scope{regular: true, keyRotation: true}, "normal")
+			result, err := diffKeyRotations(context.Background(), app, scope{regular: true, keyRotation: true})
 			require.NoError(t, err, sides)
-			require.Equal(t, "normal\n--- key_rotation skipped: profile other has features.key_rotation disabled\n", result, sides)
+			require.Equal(t, "--- key_rotation skipped: profile other has features.key_rotation disabled\n", result, sides)
 		}
 	})
 
 	t.Run("--filter key_rotation fails", func(t *testing.T) {
 		setDiffConfig(t, "local", "other@remote", "clients", "key_rotation")
 
-		_, err := diffKeyRotations(context.Background(), app, scope{regular: true, keyRotation: true, explicit: true}, "normal")
+		_, err := diffKeyRotations(context.Background(), app, scope{regular: true, keyRotation: true, explicit: true})
 		require.EqualError(t, err, "profile other cannot diff key rotation: features.key_rotation is not enabled")
 	})
 
@@ -130,7 +130,7 @@ func TestDiffKeyRotationsOtherProfile(t *testing.T) {
 		app := keyRotationApp(t, config.Configuration{Features: &config.Features{KeyRotation: true}, Client: client.DefaultConfig()})
 		setDiffConfig(t, "local", "other@remote")
 
-		_, err := diffKeyRotations(context.Background(), app, scope{regular: true, keyRotation: true}, "normal")
+		_, err := diffKeyRotations(context.Background(), app, scope{regular: true, keyRotation: true})
 		require.EqualError(t, err, "profile other: features.key_rotation requires the manage_servers scope in client.scopes")
 	})
 }
