@@ -2,6 +2,7 @@ package config
 
 import (
 	"os"
+	"slices"
 	"strings"
 
 	"github.com/cloudentity/cac/internal/cac/client"
@@ -17,12 +18,22 @@ import (
 var (
 	DefaultConfig = func() Configuration {
 		return Configuration{
-			Client:  client.DefaultConfig(),
-			Storage: storage.DefaultMultiStorageConfig(),
-			Logging: logging.DefaultLoggingConfig(),
+			Client:   client.DefaultConfig(),
+			Storage:  storage.DefaultMultiStorageConfig(),
+			Logging:  logging.DefaultLoggingConfig(),
+			Features: &Features{},
 		}
 	}
 )
+
+// manageServersScope is the scope the system keys API behind key rotation requires.
+const manageServersScope = "manage_servers"
+
+// Features toggles optional behaviour of the plain pull, push and diff commands.
+type Features struct {
+	// KeyRotation makes plain pull, push and diff also handle workspaces/<wid>/key_rotation.yaml.
+	KeyRotation bool `json:"key_rotation"`
+}
 
 type RootConfiguration struct {
 	// nolint
@@ -46,10 +57,25 @@ func (c *RootConfiguration) ForProfile(profile string) (*Configuration, error) {
 }
 
 type Configuration struct {
-	Name    string                             `json:"name"`
-	Logging *logging.Configuration             `json:"logging"`
-	Client  *client.Configuration              `json:"client"`
-	Storage *storage.MultiStorageConfiguration `json:"storage"`
+	Name     string                             `json:"name"`
+	Logging  *logging.Configuration             `json:"logging"`
+	Client   *client.Configuration              `json:"client"`
+	Storage  *storage.MultiStorageConfiguration `json:"storage"`
+	Features *Features                          `json:"features"`
+}
+
+// KeyRotationEnabled reports whether features.key_rotation is on.
+func (c *Configuration) KeyRotationEnabled() bool {
+	return c.Features != nil && c.Features.KeyRotation
+}
+
+// Validate checks settings that only make sense together.
+func (c *Configuration) Validate() error {
+	if c.KeyRotationEnabled() && (c.Client == nil || !slices.Contains(c.Client.Scopes, manageServersScope)) {
+		return errors.New("features.key_rotation requires the manage_servers scope in client.scopes")
+	}
+
+	return nil
 }
 
 func (c *Configuration) SetImplicitValues(name string, defaultConfig Configuration) {
@@ -59,9 +85,9 @@ func (c *Configuration) SetImplicitValues(name string, defaultConfig Configurati
 
 	// Fall back to the default config, but as an independent copy so that
 	// profiles never share (and accidentally mutate) the default's objects.
-	// Logging only holds value fields, so a plain struct copy is enough; the
-	// client and storage configs carry reference fields and are deep-copied
-	// via their Clone methods.
+	// Logging and features only hold value fields, so a plain struct copy is
+	// enough; the client and storage configs carry reference fields and are
+	// deep-copied via their Clone methods.
 	if c.Logging == nil && defaultConfig.Logging != nil {
 		clone := *defaultConfig.Logging
 		c.Logging = &clone
@@ -73,6 +99,11 @@ func (c *Configuration) SetImplicitValues(name string, defaultConfig Configurati
 
 	if c.Storage == nil && defaultConfig.Storage != nil {
 		c.Storage = defaultConfig.Storage.Clone()
+	}
+
+	if c.Features == nil && defaultConfig.Features != nil {
+		clone := *defaultConfig.Features
+		c.Features = &clone
 	}
 }
 

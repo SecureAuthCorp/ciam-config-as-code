@@ -1,9 +1,13 @@
 package cmd
 
 import (
+	"context"
+	"os"
+
 	"github.com/cloudentity/acp-client-go/clients/hub/models"
 	"github.com/cloudentity/cac/internal/cac"
 	"github.com/cloudentity/cac/internal/cac/api"
+	"github.com/cloudentity/cac/internal/cac/keyrotation"
 	"github.com/cloudentity/cac/internal/cac/storage"
 	"github.com/pkg/errors"
 	"github.com/spf13/cobra"
@@ -37,65 +41,20 @@ Examples:
   cac --config ./cac.yaml --profile dev --workspace demo push --method patch --filter clients,services`,
 		RunE: func(cmd *cobra.Command, args []string) error {
 			var (
-				app  *cac.Application
-				data models.Rfc7396PatchOperation
-				err  error
+				app *cac.Application
+				s   scope
+				err error
 			)
 
 			if app, err = cac.InitApp(rootConfig.ConfigPath, rootConfig.Profile, rootConfig.Tenant); err != nil {
 				return err
 			}
 
-			if data, err = app.Storage.Read(
-				cmd.Context(),
-				api.WithWorkspace(rootConfig.Workspace),
-				api.WithFilters(pushConfig.Filters),
-			); err != nil {
+			if s, err = scopeOf(app.Config.KeyRotationEnabled(), pushConfig.Filters); err != nil {
 				return err
 			}
 
-			if !pushConfig.NoLocalValidate {
-				if err = app.Validator.Validate(&data); err != nil {
-					return errors.Wrap(err, "failed to validate configuration")
-				}
-			}
-
-			if pushConfig.DryRun {
-				slog.Info("dry run enabled, storing files to disk instead of pushing to server")
-
-				var (
-					dryStorage storage.Storage
-					constr     = storage.InitServerStorage
-				)
-
-				if rootConfig.Tenant {
-					constr = storage.InitTenantStorage
-				}
-
-				if dryStorage, err = storage.InitDryStorage(pushConfig.Out, constr); err != nil {
-					return errors.Wrap(err, "failed to initialize dry storage")
-				}
-
-				if err = dryStorage.Write(cmd.Context(), data, api.WithWorkspace(rootConfig.Workspace)); err != nil {
-					return errors.Wrap(err, "failed to write configuration")
-				}
-
-				return nil
-			}
-
-			if err = app.Client.Write(
-				cmd.Context(),
-				data,
-				api.WithWorkspace(rootConfig.Workspace),
-				api.WithMode(pushConfig.Mode),
-				api.WithMethod(pushConfig.Method),
-			); err != nil {
-				return errors.Wrap(err, "failed to push configuration")
-			}
-
-			slog.Info("pushed configuration")
-
-			return nil
+			return runPush(cmd.Context(), app, s)
 		},
 	}
 	pushConfig struct {
@@ -107,6 +66,112 @@ Examples:
 		NoLocalValidate bool
 	}
 )
+
+// runPush pushes the configuration and the key rotation, as scoped.
+func runPush(ctx context.Context, app *cac.Application, s scope) error {
+	var (
+		krs []keyrotation.WorkspaceConfig
+		err error
+	)
+
+	// key rotation is read and validated up front, so an invalid file fails before anything is pushed
+	if s.keyRotation {
+		if krs, err = readKeyRotations(app); err != nil {
+			return err
+		}
+	}
+
+	if pushConfig.DryRun {
+		if err = resetDryRunOut(pushConfig.Out); err != nil {
+			return err
+		}
+	}
+
+	if s.regular {
+		if err = pushConfiguration(ctx, app, pushConfig.Filters); err != nil {
+			return err
+		}
+	}
+
+	if s.keyRotation {
+		return pushKeyRotations(ctx, app, krs)
+	}
+
+	return nil
+}
+
+// resetDryRunOut empties a flat --out file at the start of a dry run, so that each part of the run
+// writes after the previous one and a run with nothing to write leaves no stale output behind.
+func resetDryRunOut(out string) error {
+	if out == "-" {
+		return nil
+	}
+
+	if info, err := os.Stat(out); err == nil && info.IsDir() {
+		return nil
+	}
+
+	return errors.Wrap(os.WriteFile(out, nil, 0644), "failed to reset dry-run output file")
+}
+
+// pushConfiguration pushes the regular configuration, or writes it to --out with --dry-run.
+func pushConfiguration(ctx context.Context, app *cac.Application, filters []string) error {
+	var (
+		data models.Rfc7396PatchOperation
+		err  error
+	)
+
+	if data, err = app.Storage.Read(
+		ctx,
+		api.WithWorkspace(rootConfig.Workspace),
+		api.WithFilters(filters),
+	); err != nil {
+		return err
+	}
+
+	if !pushConfig.NoLocalValidate {
+		if err = app.Validator.Validate(&data); err != nil {
+			return errors.Wrap(err, "failed to validate configuration")
+		}
+	}
+
+	if pushConfig.DryRun {
+		slog.Info("dry run enabled, storing files to disk instead of pushing to server")
+
+		var (
+			dryStorage storage.Storage
+			constr     = storage.InitServerStorage
+		)
+
+		if rootConfig.Tenant {
+			constr = storage.InitTenantStorage
+		}
+
+		if dryStorage, err = storage.InitDryStorage(pushConfig.Out, constr); err != nil {
+			return errors.Wrap(err, "failed to initialize dry storage")
+		}
+
+		if err = dryStorage.Write(ctx, data, api.WithWorkspace(rootConfig.Workspace)); err != nil {
+			return errors.Wrap(err, "failed to write configuration")
+		}
+
+		return nil
+	}
+
+	if err = app.Client.Write(
+		ctx,
+		data,
+		api.WithWorkspace(rootConfig.Workspace),
+		api.WithMode(pushConfig.Mode),
+		api.WithMethod(pushConfig.Method),
+	); err != nil {
+		return errors.Wrap(err, "failed to push configuration")
+	}
+
+	slog.Info("pushed configuration")
+
+	return nil
+}
 
 func init() {
 	pushCmd.PersistentFlags().BoolVar(&pushConfig.DryRun, "dry-run", false, `Write the resolved configuration to disk or stdout instead of pushing to the server.
@@ -139,6 +204,7 @@ Workspace resources: clients, idps, claims, custom_apps, gateways, policies, pol
                      ciba (alias of ciba_authentication_service)
 Tenant resources:    pools, schemas, mfa_methods, themes, servers
 Reserved:            root (only root-level tenant/workspace config, excluding nested resources)
+Key rotation:        key_rotation (workspace key rotation settings; requires features.key_rotation: true)
 Examples:
   --filter clients
   --filter clients,idps,policies

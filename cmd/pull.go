@@ -1,6 +1,8 @@
 package cmd
 
 import (
+	"context"
+
 	"github.com/cloudentity/acp-client-go/clients/hub/models"
 	"github.com/cloudentity/cac/internal/cac"
 	"github.com/cloudentity/cac/internal/cac/api"
@@ -29,36 +31,20 @@ Examples:
   cac --config ./cac.yaml --profile dev --tenant pull`,
 		RunE: func(cmd *cobra.Command, args []string) error {
 			var (
-				app  *cac.Application
-				data models.Rfc7396PatchOperation
-				err  error
+				app *cac.Application
+				s   scope
+				err error
 			)
 
 			if app, err = cac.InitApp(rootConfig.ConfigPath, rootConfig.Profile, rootConfig.Tenant); err != nil {
 				return err
 			}
 
-			slog.
-				With("workspace", rootConfig.Workspace).
-				With("tenant", rootConfig.Tenant).
-				With("filters", pullConfig.Filters).
-				With("config", rootConfig.ConfigPath).
-				Info("Pulling configuration")
-
-			if data, err = app.Client.Read(
-				cmd.Context(),
-				api.WithWorkspace(rootConfig.Workspace),
-				api.WithSecrets(pullConfig.WithSecrets),
-				api.WithFilters(pullConfig.Filters),
-			); err != nil {
+			if s, err = scopeOf(app.Config.KeyRotationEnabled(), pullConfig.Filters); err != nil {
 				return err
 			}
 
-			if err = app.Storage.Write(cmd.Context(), data, api.WithWorkspace(rootConfig.Workspace)); err != nil {
-				return err
-			}
-
-			return nil
+			return runPull(cmd.Context(), app, s)
 		},
 	}
 	pullConfig struct {
@@ -66,6 +52,42 @@ Examples:
 		Filters     []string
 	}
 )
+
+// runPull pulls the configuration and the key rotation, as scoped.
+func runPull(ctx context.Context, app *cac.Application, s scope) error {
+	var (
+		data models.Rfc7396PatchOperation
+		err  error
+	)
+
+	if s.regular {
+		slog.
+			With("workspace", rootConfig.Workspace).
+			With("tenant", rootConfig.Tenant).
+			With("filters", pullConfig.Filters).
+			With("config", rootConfig.ConfigPath).
+			Info("Pulling configuration")
+
+		if data, err = app.Client.Read(
+			ctx,
+			api.WithWorkspace(rootConfig.Workspace),
+			api.WithSecrets(pullConfig.WithSecrets),
+			api.WithFilters(pullConfig.Filters),
+		); err != nil {
+			return err
+		}
+
+		if err = app.Storage.Write(ctx, data, api.WithWorkspace(rootConfig.Workspace)); err != nil {
+			return err
+		}
+	}
+
+	if s.keyRotation {
+		return pullKeyRotations(ctx, app, data)
+	}
+
+	return nil
+}
 
 func init() {
 	pullCmd.Flags().BoolVar(&pullConfig.WithSecrets, "with-secrets", false, `Include secret fields (client secrets, signing keys, etc.) in the pulled configuration.
@@ -77,6 +99,7 @@ Workspace resources: clients, idps, claims, custom_apps, gateways, policies, pol
                      ciba (alias of ciba_authentication_service)
 Tenant resources:    pools, schemas, mfa_methods, themes, servers
 Reserved:            root (only root-level tenant/workspace config, excluding nested resources)
+Key rotation:        key_rotation (workspace key rotation settings; requires features.key_rotation: true)
 Examples:
   --filter clients
   --filter clients,idps,policies

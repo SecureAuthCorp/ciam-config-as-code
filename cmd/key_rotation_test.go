@@ -1,75 +1,16 @@
 package cmd
 
 import (
+	"context"
 	"io"
+	"os"
+	"path/filepath"
 	"testing"
-	"time"
 
-	"github.com/cloudentity/cac/internal/cac/diff"
+	"github.com/cloudentity/cac/internal/cac/config"
 	"github.com/cloudentity/cac/internal/cac/keyrotation"
-	"github.com/cloudentity/cac/internal/cac/utils"
-	"github.com/go-openapi/strfmt"
 	"github.com/stretchr/testify/require"
 )
-
-func keyRotationDiff(t *testing.T, local, remote *keyrotation.Config) string {
-	source, target := keyRotationDiffConfigs(local, remote)
-
-	sourcePatch, err := utils.FromModelToPatch(source)
-	require.NoError(t, err)
-
-	targetPatch, err := utils.FromModelToPatch(target)
-	require.NoError(t, err)
-
-	result, err := diff.Tree(sourcePatch, targetPatch, diff.Colorize(false))
-	require.NoError(t, err)
-
-	return result
-}
-
-func TestKeyRotationDiffConfigs(t *testing.T) {
-	t.Run("starting_from is cleared on local only", func(t *testing.T) {
-		startingFrom := strfmt.DateTime(time.Date(2030, 1, 1, 0, 0, 0, 0, time.UTC))
-
-		source, target := keyRotationDiffConfigs(
-			&keyrotation.Config{Sig: &keyrotation.Rotation{Enabled: true, Cron: "0 0 1 * *", StartingFrom: &startingFrom}},
-			&keyrotation.Config{Sig: &keyrotation.Rotation{Enabled: true, Cron: "0 0 1 * *", StartingFrom: &startingFrom}},
-		)
-
-		require.Equal(t, &keyrotation.Config{Sig: &keyrotation.Rotation{Enabled: true, Cron: "0 0 1 * *"}}, source)
-		require.Equal(t, &startingFrom, target.Sig.StartingFrom)
-	})
-
-	t.Run("remote use absent locally is dropped", func(t *testing.T) {
-		source, target := keyRotationDiffConfigs(
-			&keyrotation.Config{Sig: &keyrotation.Rotation{Enabled: true, Cron: "0 0 1 * *"}},
-			&keyrotation.Config{
-				Sig: &keyrotation.Rotation{Enabled: false, Cron: "0 0 1 * *"},
-				Enc: &keyrotation.Rotation{Enabled: true, Cron: "0 0 1 1 *"},
-			},
-		)
-
-		require.Equal(t, &keyrotation.Config{Sig: &keyrotation.Rotation{Enabled: true, Cron: "0 0 1 * *"}}, source)
-		require.Equal(t, &keyrotation.Config{Sig: &keyrotation.Rotation{Enabled: false, Cron: "0 0 1 * *"}}, target)
-	})
-
-	t.Run("nil local and configured remote give an empty diff", func(t *testing.T) {
-		require.Empty(t, keyRotationDiff(t, nil, &keyrotation.Config{
-			Sig: &keyrotation.Rotation{Enabled: true, Cron: "0 0 1 * *"},
-			Enc: &keyrotation.Rotation{Enabled: true, Cron: "0 0 1 1 *"},
-		}))
-	})
-
-	t.Run("nil configs give an empty diff", func(t *testing.T) {
-		require.Empty(t, keyRotationDiff(t, nil, nil))
-	})
-
-	t.Run("local use missing remotely shows up", func(t *testing.T) {
-		require.NotEmpty(t, keyRotationDiff(t, &keyrotation.Config{
-			Enc: &keyrotation.Rotation{Enabled: true, Cron: "0 0 1 1 *"},
-		}, nil))
-	})
-}
 
 // TestKeyRotationFlagScoping checks that the required flags of push and diff still apply to them, while
 // the key-rotation subcommands neither require nor accept the parent commands' own flags.
@@ -98,4 +39,86 @@ func TestKeyRotationFlagScoping(t *testing.T) {
 
 		require.EqualError(t, rootCmd.Execute(), tc.err, tc.args)
 	}
+}
+
+// TestKeyRotationSubcommands runs pull, push and diff with the scope of their key-rotation
+// subcommands, with the feature off.
+func TestKeyRotationSubcommands(t *testing.T) {
+	var (
+		ctx    = context.Background()
+		app    = keyRotationApp(t, config.Configuration{})
+		remote = fakeKeyRotation{"demo": monthly(false)}
+		dir    = keyrotation.NewDirStore(app.Config.Storage.DirPath)
+		s      = scope{keyRotation: true, explicit: true}
+	)
+
+	app.Config.Features.KeyRotation = false
+	app.KeyRotation = remote
+	setFlags(t)
+
+	t.Run("pull", func(t *testing.T) {
+		require.NoError(t, runPull(ctx, app, s))
+
+		got, err := dir.Read("demo")
+		require.NoError(t, err)
+		require.Equal(t, monthly(false), got)
+	})
+
+	require.NoError(t, dir.Write("demo", monthly(true)))
+
+	t.Run("diff", func(t *testing.T) {
+		want, err := keyrotation.TreeDiff(monthly(true), monthly(false), false)
+		require.NoError(t, err)
+
+		result, err := runDiff(ctx, app, s, "local", "remote")
+		require.NoError(t, err)
+		require.Equal(t, "--- key_rotation (demo)\n"+want, result)
+	})
+
+	t.Run("push --dry-run to an existing directory", func(t *testing.T) {
+		out := t.TempDir()
+		pushConfig.DryRun, pushConfig.Out = true, out
+
+		require.NoError(t, runPush(ctx, app, s))
+
+		got, err := keyrotation.NewDirStore([]string{out}).Read("demo")
+		require.NoError(t, err)
+		require.Equal(t, monthly(true), got)
+	})
+
+	t.Run("push --dry-run to a file, replacing it", func(t *testing.T) {
+		out := filepath.Join(t.TempDir(), "out.yaml")
+		require.NoError(t, os.WriteFile(out, []byte("stale: true\n"), 0644))
+		pushConfig.DryRun, pushConfig.Out = true, out
+
+		require.NoError(t, runPush(ctx, app, s))
+
+		section, err := keyrotation.DryRunSection("demo", monthly(true))
+		require.NoError(t, err)
+
+		bts, err := os.ReadFile(out)
+		require.NoError(t, err)
+		require.Equal(t, string(section), string(bts))
+	})
+
+	t.Run("push --dry-run with nothing to push empties the file", func(t *testing.T) {
+		out := filepath.Join(t.TempDir(), "out.yaml")
+		require.NoError(t, os.WriteFile(out, []byte("stale: true\n"), 0644))
+		pushConfig.DryRun, pushConfig.Out = true, out
+		rootConfig.Workspace = "unconfigured"
+		t.Cleanup(func() { rootConfig.Workspace = "demo" })
+
+		require.NoError(t, runPush(ctx, app, s))
+
+		bts, err := os.ReadFile(out)
+		require.NoError(t, err)
+		require.Empty(t, bts)
+	})
+
+	t.Run("push", func(t *testing.T) {
+		pushConfig.DryRun = false
+
+		require.NoError(t, runPush(ctx, app, s))
+		require.Equal(t, monthly(true), remote["demo"])
+	})
 }

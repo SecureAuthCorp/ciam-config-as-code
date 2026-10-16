@@ -1,0 +1,10 @@
+# the default config leaves features out, a profile turns key rotation on
+profiles:
+  on:
+    client:
+      scopes:
+        - manage_configuration
+        - manage_servers
+    features:
+      key_rotation: true
+  bare: {}

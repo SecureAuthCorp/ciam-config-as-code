@@ -5,6 +5,7 @@ import (
 	"github.com/cloudentity/cac/internal/cac/client"
 	"github.com/cloudentity/cac/internal/cac/config"
 	"github.com/cloudentity/cac/internal/cac/data"
+	"github.com/cloudentity/cac/internal/cac/keyrotation"
 	"github.com/cloudentity/cac/internal/cac/logging"
 	"github.com/cloudentity/cac/internal/cac/storage"
 	"golang.org/x/exp/slog"
@@ -17,7 +18,7 @@ type Application struct {
 	Client      api.Source
 	Storage     storage.Storage
 	Validator   data.ValidatorApi
-	KeyRotation *client.KeyRotationAPIStore
+	KeyRotation keyrotation.Remote
 }
 
 func InitApp(configPath string, profile string, tenant bool) (app *Application, err error) {
@@ -28,6 +29,10 @@ func InitApp(configPath string, profile string, tenant bool) (app *Application, 
 	}
 
 	if app.Config, err = app.RootConfig.ForProfile(profile); err != nil {
+		return app, err
+	}
+
+	if err = app.Config.Validate(); err != nil {
 		return app, err
 	}
 
@@ -71,13 +76,15 @@ func InitApp(configPath string, profile string, tenant bool) (app *Application, 
 	return app, nil
 }
 
-func (a *Application) PickSource(source string, tenant bool) (api.Source, error) {
+// ResolveSource resolves a --source or --target value, "[profile@]source-type", to the profile's
+// configuration and the source type. Without a profile it refers to the selected one.
+func (a *Application) ResolveSource(spec string) (*config.Configuration, api.SourceType, error) {
 	var (
 		conf       *config.Configuration
 		sourceType api.SourceType
 		err        error
 
-		profile, sourceS, found = strings.Cut(source, "@")
+		profile, sourceS, found = strings.Cut(spec, "@")
 	)
 
 	if !found {
@@ -88,10 +95,19 @@ func (a *Application) PickSource(source string, tenant bool) (api.Source, error)
 	}
 
 	if conf, err = a.RootConfig.ForProfile(profile); err != nil {
-		return nil, err
+		return nil, "", err
 	}
 
 	if sourceType, err = api.SourceFromString(sourceS); err != nil {
+		return nil, "", err
+	}
+
+	return conf, sourceType, nil
+}
+
+func (a *Application) PickSource(source string, tenant bool) (api.Source, error) {
+	conf, sourceType, err := a.ResolveSource(source)
+	if err != nil {
 		return nil, err
 	}
 
@@ -124,7 +140,7 @@ func (a *Application) PickSource(source string, tenant bool) (api.Source, error)
 			c   *client.Client
 			err error
 		)
-		
+
 		ms, err := storage.InitMultiStorage(conf.Storage, constructor)
 
 		if err != nil {

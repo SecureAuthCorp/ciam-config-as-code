@@ -1,0 +1,18 @@
+client:
+  scopes:
+    - manage_configuration
+    - manage_servers
+features:
+  key_rotation: true
+
+profiles:
+  # overrides the default features
+  off:
+    features:
+      key_rotation: false
+  # declares nothing of its own, so it falls back to (a copy of) the default features
+  bare: {}
+  # inherits key rotation but replaces the whole client, dropping the default scopes
+  own_client:
+    client:
+      tenant_id: other

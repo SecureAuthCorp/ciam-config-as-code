@@ -201,3 +201,20 @@ enc:
   cron: '@monthly'
 `, string(bts))
 }
+
+func TestDirStoreWorkspaces(t *testing.T) {
+	first, second := t.TempDir(), t.TempDir()
+	cfg := &keyrotation.Config{Sig: &keyrotation.Rotation{Enabled: true, Cron: "0 0 1 * *"}}
+
+	require.NoError(t, keyrotation.NewDirStore([]string{first}).Write("b", cfg))
+	require.NoError(t, keyrotation.NewDirStore([]string{second}).Write("a", cfg))
+	require.NoError(t, keyrotation.NewDirStore([]string{second}).Write("b", cfg))
+	// a workspace dir without the file is not listed
+	require.NoError(t, os.MkdirAll(filepath.Join(first, "workspaces", "c"), 0755))
+
+	store := keyrotation.NewDirStore([]string{first, second, filepath.Join(first, "missing")})
+
+	wids, err := store.Workspaces()
+	require.NoError(t, err)
+	require.Equal(t, []string{"a", "b"}, wids)
+}

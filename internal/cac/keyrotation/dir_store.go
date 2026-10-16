@@ -1,8 +1,10 @@
 package keyrotation
 
 import (
+	"maps"
 	"os"
 	"path/filepath"
+	"slices"
 
 	"github.com/cloudentity/cac/internal/cac/templates"
 	"github.com/cloudentity/cac/internal/cac/utils"
@@ -99,6 +101,34 @@ func (d *DirStore) Write(wid string, cfg *Config) error {
 	}
 
 	return nil
+}
+
+// Workspaces returns the sorted ids of the workspaces that have a key rotation file in any of the
+// dirs.
+func (d *DirStore) Workspaces() ([]string, error) {
+	ids := map[string]struct{}{}
+
+	for _, dir := range d.Dirs {
+		entries, err := os.ReadDir(filepath.Join(dir, "workspaces"))
+		if os.IsNotExist(err) {
+			continue
+		} else if err != nil {
+			return nil, err
+		}
+
+		for _, entry := range entries {
+			if entry.IsDir() && d.has(dir, entry.Name()) {
+				ids[entry.Name()] = struct{}{}
+			}
+		}
+	}
+
+	return slices.Sorted(maps.Keys(ids)), nil
+}
+
+func (d *DirStore) has(dir string, wid string) bool {
+	_, err := os.Stat(filepath.Join(d.dirPath(dir, wid), FileName))
+	return err == nil
 }
 
 func decodeStrict(raw map[string]any) (*Config, error) {

@@ -1,13 +1,15 @@
 package cmd
 
 import (
+	"context"
+	"os"
+
 	"github.com/cloudentity/cac/internal/cac"
 	"github.com/cloudentity/cac/internal/cac/api"
 	"github.com/cloudentity/cac/internal/cac/diff"
 	"github.com/pkg/errors"
 	"github.com/spf13/cobra"
 	"golang.org/x/exp/slog"
-	"os"
 )
 
 var (
@@ -41,9 +43,8 @@ Examples:
 		RunE: func(cmd *cobra.Command, args []string) error {
 			var (
 				app    *cac.Application
+				s      scope
 				result string
-				source api.Source
-				target api.Source
 				err    error
 			)
 
@@ -63,23 +64,11 @@ Examples:
 				return err
 			}
 
-			if source, err = app.PickSource(diffConfig.Source, rootConfig.Tenant); err != nil {
+			if s, err = scopeOf(app.Config.KeyRotationEnabled(), diffConfig.Filters); err != nil {
 				return err
 			}
 
-			if target, err = app.PickSource(diffConfig.Target, rootConfig.Tenant); err != nil {
-				return err
-			}
-
-			slog.Info("Comparing configurations", "source", source, "target", target)
-
-			if result, err = diff.Diff(cmd.Context(), source, target, rootConfig.Workspace,
-				diff.Colorize(diffConfig.Colors),
-				diff.OnlyPresent(diffConfig.OnlyPresent),
-				diff.Filters(diffConfig.Filters...),
-				diff.WithSecrets(diffConfig.WithSecrets),
-				diff.FilterVolatileFields(diffConfig.FilterVolatile),
-			); err != nil {
+			if result, err = runDiff(cmd.Context(), app, s, diffConfig.Source, diffConfig.Target); err != nil {
 				return err
 			}
 
@@ -97,6 +86,48 @@ Examples:
 		FilterVolatile bool
 	}
 )
+
+// runDiff compares the configuration and the key rotation of the source and target, as scoped.
+func runDiff(ctx context.Context, app *cac.Application, s scope, sourceSpec, targetSpec string) (string, error) {
+	var (
+		result string
+		kr     string
+		source api.Source
+		target api.Source
+		err    error
+	)
+
+	if s.regular {
+		if source, err = app.PickSource(sourceSpec, rootConfig.Tenant); err != nil {
+			return "", err
+		}
+
+		if target, err = app.PickSource(targetSpec, rootConfig.Tenant); err != nil {
+			return "", err
+		}
+
+		slog.Info("Comparing configurations", "source", source, "target", target)
+
+		if result, err = diff.Diff(ctx, source, target, rootConfig.Workspace,
+			diff.Colorize(diffConfig.Colors),
+			diff.OnlyPresent(diffConfig.OnlyPresent),
+			diff.Filters(diffConfig.Filters...),
+			diff.WithSecrets(diffConfig.WithSecrets),
+			diff.FilterVolatileFields(diffConfig.FilterVolatile),
+		); err != nil {
+			return "", err
+		}
+	}
+
+	if s.keyRotation {
+		if kr, err = diffKeyRotations(ctx, app, s, sourceSpec, targetSpec); err != nil {
+			return "", err
+		}
+	}
+
+	// a non-empty configuration diff ends with a newline, so the key rotation lines start their own
+	return result + kr, nil
+}
 
 func writeDiffResult(result string) error {
 	if diffConfig.Out != "-" {
@@ -139,6 +170,7 @@ Workspace resources: clients, idps, claims, custom_apps, gateways, policies, pol
                      ciba (alias of ciba_authentication_service)
 Tenant resources:    pools, schemas, mfa_methods, themes, servers
 Reserved:            root (only root-level tenant/workspace config, excluding nested resources)
+Key rotation:        key_rotation (workspace key rotation settings; requires features.key_rotation: true)
 Examples:
   --filter clients
   --filter clients,idps,policies
